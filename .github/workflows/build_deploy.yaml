@@ -6,6 +6,12 @@ on:
   pull_request:
     branches: [ "*" ]
 
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+
 jobs:
   build:
     runs-on: ubuntu-24.04
@@ -30,3 +36,35 @@ jobs:
         context: .
         push: ${{ github.event_name != 'pull_request' }}
         tags: antoxabarin/bobby:latest
+
+    - name: Extract artifacts from image
+      run: |
+        set -euo pipefail
+        mkdir -p ./pages
+        container_id=$(docker create antoxabarin/bobby:latest)
+        docker cp "${container_id}:/usr/share/nginx/html/." ./pages/
+        docker rm "${container_id}"
+        
+        ls -la ./pages
+        test -f ./pages/index.html
+        test -f ./pages/index.js
+        test -f ./pages/index.wasm
+        test -f ./pages/index.data
+
+    - name: Upload Pages artifact
+      if: github.event_name != 'pull_request'
+      uses: actions/upload-pages-artifact@v5
+      with:
+        path: ./pages
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
