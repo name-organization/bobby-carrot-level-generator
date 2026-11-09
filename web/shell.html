@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>Bobby Carrot</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>🥕</text></svg>">
+<style>
+  :root { --bg: #11150f; --panel: #1b2117; --ink: #d8e3c8; --dim: #6f7d63; }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; height: 100%; background: var(--bg); color: var(--ink);
+    font: 14px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    overscroll-behavior: none; touch-action: none;
+  }
+  body { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 16px; }
+  #stage { position: relative; display: flex; align-items: center; justify-content: center; }
+  canvas {
+    display: block; background: #000;
+    image-rendering: pixelated; image-rendering: crisp-edges;
+    max-width: min(92vw, 70vh); max-height: 70vh; width: auto; height: auto;
+    border-radius: 6px; box-shadow: 0 10px 40px rgba(0,0,0,.6);
+    outline: none;
+  }
+  #loader {
+    position: absolute; inset: 0; display: grid; place-items: center;
+    background: var(--panel); border-radius: 6px; text-align: center; padding: 20px;
+  }
+  #loader.hidden { display: none; }
+  #bar { width: 180px; height: 6px; background: #2b3425; border-radius: 3px; overflow: hidden; margin-top: 10px; }
+  #bar > i { display: block; height: 100%; width: 0%; background: #c7792f; transition: width .2s; }
+  footer { color: var(--dim); text-align: center; max-width: 560px; }
+  kbd { background: #263020; border: 1px solid #36422c; border-bottom-width: 2px;
+        border-radius: 4px; padding: 0 5px; color: var(--ink); }
+  @media (max-width: 640px) { footer .desktop-only { display: none; } }
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <canvas id="canvas" tabindex="-1" oncontextmenu="event.preventDefault()"></canvas>
+  <div id="loader">
+    <div>
+      <div id="status">loading…</div>
+      <div id="bar"><i></i></div>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <span class="desktop-only">
+    <kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> or <kbd>WASD</kbd> move ·
+    <kbd>R</kbd> restart · <kbd>F</kbd> view · <kbd>T</kbd> carrot/egg mode ·
+    <kbd>M</kbd> mute · <kbd>Esc</kbd> levels
+  </span>
+  <span class="mobile-only">swipe to move, tap the arrows, tap to confirm</span>
+</footer>
+
+<script>
+  const canvas = document.getElementById('canvas');
+  const loader = document.getElementById('loader');
+  const statusEl = document.getElementById('status');
+  const barFill = document.querySelector('#bar > i');
+
+  // Arrow keys and space scroll the page by default, which fights the game.
+  window.addEventListener('keydown', (e) => {
+    if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) e.preventDefault();
+  }, { passive: false });
+
+  var Module = {
+    canvas: canvas,
+    preRun: [],
+    postRun: [() => { loader.classList.add('hidden'); canvas.focus(); }],
+    print: (...a) => console.log(...a),
+    printErr: (...a) => console.warn(...a),
+    setStatus: (text) => {
+      if (!text) { barFill.style.width = '100%'; return; }
+      statusEl.textContent = text;
+      const m = /([\d.]+)\s*\/\s*([\d.]+)/.exec(text);
+      if (m) barFill.style.width = (100 * parseFloat(m[1]) / parseFloat(m[2])) + '%';
+    },
+  };
+  Module.setStatus('loading…');
+</script>
+{{{ SCRIPT }}}
+</body>
+</html>
