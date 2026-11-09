@@ -13,8 +13,7 @@ $(ASSETS_DIR):
 
 # dependency: library
 $(SDL):
-	wget -P docker/ https://github.com/libsdl-org/SDL/archive/release-2.32.10.zip
-	mv docker/release-2.32.10.zip $(SDL)
+	wget -O docker/sdl-release-2.32.10.zip https://github.com/libsdl-org/SDL/archive/release-2.32.10.zip
 
 # TODO: pull image
 run: $(ASSETS_DIR) $(SDL)
