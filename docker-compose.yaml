@@ -1,6 +1,6 @@
 services:
   bobby:
     build: .
-    image: bobby:latest
+    image: antoxabarin/bobby:latest
     ports:
       - "8080:80"
