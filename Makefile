@@ -19,5 +19,7 @@ $(SDL):
 
 # TODO: pull image
 run: $(ASSETS_DIR) $(SDL)
-	docker run --rm -p $(PORT):80 $(IMAGE):latest
-	
+	docker compose up
+
+clean:
+	rm -rf $(ASSETS_DIR) $(SDL)

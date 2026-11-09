@@ -1,0 +1,6 @@
+services:
+  bobby:
+    build: .
+    image: bobby:latest
+    ports:
+      - "8080:80"
