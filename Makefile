@@ -1,24 +1,23 @@
 PORT  ?= 8080
-IMAGE = bobby
 ASSETS_DIR = assets/v1
 SDL = docker/sdl-release-2.32.10.zip
 
-
-.PHONY: all assets sdl build-image
+.PHONY: all run build-image
 
 all: run
 
-# dependency: game assets
+# dependency: game assets (images, audio, default levels)
 $(ASSETS_DIR):
 	tools/fetch_assets.sh
 
 # dependency: library
 $(SDL):
-	wget -P docker/ https://github.com/libsdl-org/SDL/archive/release-2.32.10.zip
-	mv docker/release-2.32.10.zip $(SDL)
+	wget -O docker/sdl-release-2.32.10.zip https://github.com/libsdl-org/SDL/archive/release-2.32.10.zip
 
-# TODO: pull image
-run: $(ASSETS_DIR) $(SDL)
+build-image: $(ASSETS_DIR) $(SDL)
+	docker compose build bobby
+
+run: build-image
 	docker compose up
 
 clean:
