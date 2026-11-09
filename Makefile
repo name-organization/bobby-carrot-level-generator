@@ -3,12 +3,11 @@ IMAGE = bobby
 ASSETS_DIR = assets/v1
 SDL = docker/sdl-release-2.32.10.zip
 
-
 .PHONY: all assets sdl build-image
 
 all: run
 
-# dependency: game assets
+# dependency: game assets (images, audio, default levels)
 $(ASSETS_DIR):
 	tools/fetch_assets.sh
 
