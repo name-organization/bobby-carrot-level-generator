@@ -14,6 +14,7 @@ set(CORE_SOURCES
     src/core/rules.cpp
     src/core/player.cpp
     src/core/game.cpp
+    src/core/generator.cpp
 )
 
 set(GAME_SOURCES

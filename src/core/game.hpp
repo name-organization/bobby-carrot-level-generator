@@ -15,6 +15,7 @@ public:
     explicit Game(std::string assetRoot = "assets/v1") : root_(std::move(assetRoot)) {}
 
     bool load(Mode mode, int index);
+    bool loadProcedural(unsigned int seed = 0);
     void restart();
 
     // Queue input for the next tick. `held` is a continuously pressed
