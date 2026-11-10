@@ -1,296 +1,68 @@
-#include "renderer.hpp"
+#pragma once
 
-#include "hint_overlay.hpp"  // HINT OVERLAY (temporary)
+#include <SDL.h>
 
-#include <algorithm>
-#include <cmath>
+#include <string>
+
+#include "../core/game.hpp"
+#include "texture.hpp"
 
 namespace bc::gfx {
-namespace {
 
-// Sprite sheet geometry of the original art.
-constexpr int kWalkW = 36, kWalkH = 50, kWalkFrames = 8;
-constexpr int kIdleFrames = 3;
-constexpr int kFadeFrames = 9;
-constexpr int kDeathW = 44, kDeathH = 54, kDeathFrames = 8;
-constexpr int kGlyphW = 12, kGlyphH = 18;
-constexpr int kGlyphColon = 10;
+// Two presentations of the same board: the whole 16x16 island at once, which
+// suits a desktop window, and the original handset viewport that scrolls
+// behind Bobby.
+enum class ViewMode { FullMap, Handheld };
 
-const char* walkTexture(Dir d) {
-    switch (d) {
-        case Dir::Left:  return "bobby_left";
-        case Dir::Right: return "bobby_right";
-        case Dir::Up:    return "bobby_up";
-        default:         return "bobby_down";
-    }
-}
+constexpr int kFullW     = Grid::W * kTileSize;   // 512
+constexpr int kFullH     = Grid::H * kTileSize;   // 512
+constexpr int kViewCells = 10;
+constexpr int kViewRows  = 12;
+constexpr int kHandheldW = kViewCells * kTileSize;  // 320
+constexpr int kHandheldH = kViewRows * kTileSize;   // 384
 
-const char* conveyorTexture(std::uint8_t tile) {
-    switch (tile) {
-        case T_CONVEYOR_L: return "tile_conveyor_left";
-        case T_CONVEYOR_R: return "tile_conveyor_right";
-        case T_CONVEYOR_U: return "tile_conveyor_up";
-        default:           return "tile_conveyor_down";
-    }
-}
+class Renderer {
+public:
+    bool init(SDL_Renderer* sdl, const std::string& assetRoot);
 
-}  // namespace
+    void setViewMode(ViewMode m) { view_ = m; }
+    ViewMode viewMode() const { return view_; }
+    void toggleViewMode() { view_ = view_ == ViewMode::FullMap ? ViewMode::Handheld : ViewMode::FullMap; }
 
-bool Renderer::init(SDL_Renderer* sdl, const std::string& assetRoot) {
-    r_ = sdl;
-    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "0");  // nearest, keep it crisp
+    int logicalWidth() const  { return view_ == ViewMode::FullMap ? kFullW : kHandheldW; }
+    int logicalHeight() const { return view_ == ViewMode::FullMap ? kFullH : kHandheldH; }
 
-    return tex_.loadDirectory(r_, assetRoot + "/image",
-                              {"tileset", "hud", "numbers", "bobby_idle", "bobby_left",
-                               "bobby_right", "bobby_up", "bobby_down", "bobby_fade",
-                               "bobby_death", "tile_finish", "tile_conveyor_left",
-                               "tile_conveyor_right", "tile_conveyor_up",
-                               "tile_conveyor_down", "cleared", "title", "logo", "end",
-                               "arrow_l", "arrow_r", "arrow_u", "arrow_d", "BobbyCarrot"});
-}
+    void clear();
+    void present();
 
-void Renderer::clear() {
-    SDL_SetRenderDrawColor(r_, 0, 0, 0, 255);
-    SDL_RenderClear(r_);
-}
+    void drawGame(const Game& game, int frameTick);
+    void drawTitle(int frameTick);
+    void drawLevelSelect(Mode mode, int selected, int unlocked);
+    // Level under a point on the level select screen, or -1 if none.
+    int levelAt(Mode mode, int x, int y) const;
+    void drawClearedBanner(int frameTick);
+    void drawEndScreen();
+    void drawTouchArrows(float alpha);
 
-void Renderer::present() { SDL_RenderPresent(r_); }
+    // Screen-space rectangle of an on-screen arrow, for hit testing taps.
+    SDL_Rect arrowRect(Dir d) const;
 
-void Renderer::blit(const Texture& t, const SDL_Rect* src, int x, int y) {
-    if (!t) return;
-    SDL_Rect dst{x, y, src ? src->w : t.w, src ? src->h : t.h};
-    SDL_RenderCopy(r_, t.handle, src, &dst);
-}
+    const TextureCache& textures() const { return tex_; }
 
-void Renderer::updateCamera(const Game& game) {
-    if (view_ == ViewMode::FullMap) {
-        camX_ = camY_ = 0;
-        return;
-    }
-    const int px = static_cast<int>(game.player().fx() * kTileSize);
-    const int py = static_cast<int>(game.player().fy() * kTileSize);
-    camX_ = std::clamp(px - kHandheldW / 2 + kTileSize / 2, 0, kFullW - kHandheldW);
-    camY_ = std::clamp(py - kHandheldH / 2 + kTileSize / 2, 0, kFullH - kHandheldH);
-}
+private:
+    void updateCamera(const Game& game);
+    void drawTiles(const Game& game, int frameTick);
+    void drawPlayer(const Game& game);
+    void drawHud(const Game& game);
+    void drawNumber(int value, int digits, int x, int y);
+    void drawGlyph(int glyph, int x, int y);
+    void blit(const Texture& t, const SDL_Rect* src, int x, int y);
 
-void Renderer::drawTiles(const Game& game, int frameTick) {
-    const Texture& tileset = tex_.get("tileset");
-    const int animFrame = (frameTick * 16 / kTicksPerSecond) % 4;  // 4 frames at 16 fps
-    const bool open = game.allCollected();
-
-    for (int y = 0; y < Grid::H; ++y) {
-        for (int x = 0; x < Grid::W; ++x) {
-            const std::uint8_t tile = game.grid().at(x, y);
-            const int dx = x * kTileSize - camX_;
-            const int dy = y * kTileSize - camY_;
-            if (dx <= -kTileSize || dy <= -kTileSize) continue;
-            if (dx >= logicalWidth() || dy >= logicalHeight()) continue;
-
-            if (isConveyor(tile)) {
-                SDL_Rect src{animFrame * kTileSize, 0, kTileSize, kTileSize};
-                blit(tex_.get(conveyorTexture(tile)), &src, dx, dy);
-            } else if (tile == T_EXIT && open) {
-                SDL_Rect src{animFrame * kTileSize, 0, kTileSize, kTileSize};
-                blit(tex_.get("tile_finish"), &src, dx, dy);
-            } else {
-                SDL_Rect src{(tile % 8) * kTileSize, (tile / 8) * kTileSize, kTileSize,
-                             kTileSize};
-                blit(tileset, &src, dx, dy);
-            }
-        }
-    }
-}
-
-void Renderer::drawPlayer(const Game& game) {
-    const Player& p = game.player();
-    const float fx = p.fx();
-    const float fy = p.fy();
-
-    if (p.state() == Player::State::Death) {
-        const int frame = std::min(kDeathFrames - 1, p.stateTick() * kDeathFrames / kFadeTicks);
-        SDL_Rect src{frame * kDeathW, 0, kDeathW, kDeathH};
-        const int x = static_cast<int>(kTileSize * (fx + 0.5f)) - kDeathW / 2 - camX_;
-        const int y = static_cast<int>(kTileSize * (fy + 0.5f)) - (kDeathH - kTileSize / 2) - camY_;
-        blit(tex_.get("bobby_death"), &src, x, y);
-        return;
-    }
-
-    const int x = static_cast<int>(kTileSize * (fx + 0.5f)) - kWalkW / 2 - camX_;
-    const int y = static_cast<int>(kTileSize * (fy + 0.5f)) - (kWalkH - kTileSize / 2) - camY_;
-
-    const char* texName = walkTexture(p.facing());
-    int frame = 0;
-
-    switch (p.state()) {
-        case Player::State::FadeIn:
-            texName = "bobby_fade";
-            frame = kFadeFrames - 1 -
-                    std::min(kFadeFrames - 1, p.stateTick() * kFadeFrames / kFadeTicks);
-            break;
-        case Player::State::FadeOut:
-            texName = "bobby_fade";
-            frame = std::min(kFadeFrames - 1, p.stateTick() * kFadeFrames / kFadeTicks);
-            break;
-        case Player::State::Idle:
-            texName = "bobby_idle";
-            frame = (p.animTick() / 4) % kIdleFrames;  // 15 fps
-            break;
-        case Player::State::Walk:
-            // Freeze on the last frame while standing still, exactly as the
-            // original does when you walk into a wall.
-            frame = p.isMoving() ? (p.animTick() / 2) % kWalkFrames : kWalkFrames - 1;
-            break;
-        default:
-            break;
-    }
-
-    SDL_Rect src{frame * kWalkW, 0, kWalkW, kWalkH};
-    blit(tex_.get(texName), &src, x, y);
-}
-
-void Renderer::drawGlyph(int glyph, int x, int y) {
-    SDL_Rect src{glyph * kGlyphW, 0, kGlyphW, kGlyphH};
-    blit(tex_.get("numbers"), &src, x, y);
-}
-
-void Renderer::drawNumber(int value, int digits, int x, int y) {
-    value = std::clamp(value, 0, 99);
-    for (int i = digits - 1; i >= 0; --i) {
-        drawGlyph(value % 10, x + i * kGlyphW, y);
-        value /= 10;
-    }
-}
-
-void Renderer::drawHud(const Game& game) {
-    const Texture& hud = tex_.get("hud");
-    const int viewW = logicalWidth();
-
-    // Collectible counter, top right.
-    const bool carrots = game.usesCarrots();
-    const int iconW = carrots ? 46 : 34;
-    SDL_Rect iconSrc{carrots ? 0 : 46, 0, iconW, 44};
-    const int iconX = viewW - iconW - 4;
-    blit(hud, &iconSrc, iconX, 4);
-    drawNumber(game.remaining(), 2, iconX - 27, 18);
-
-    // Keys below it, one slot per colour held.
-    int slot = 0;
-    const int counts[3] = {game.progress().inv.gray, game.progress().inv.yellow,
-                           game.progress().inv.red};
-    for (int i = 0; i < 3; ++i) {
-        if (counts[i] <= 0) continue;
-        SDL_Rect src{122 + i * 22, 0, 22, 44};
-        blit(hud, &src, viewW - 22 - 4 - slot * 22, 50);
-        ++slot;
-    }
-
-    // Timer, top left.
-    const int secs = game.elapsedSeconds();
-    int m = std::min(99, secs / 60);
-    int s = secs / 60 > 99 ? 99 : secs % 60;
-    const int glyphs[5] = {m / 10, m % 10, kGlyphColon, s / 10, s % 10};
-    for (int i = 0; i < 5; ++i) drawGlyph(glyphs[i], 4 + i * kGlyphW, 4);
-}
-
-void Renderer::drawGame(const Game& game, int frameTick) {
-    updateCamera(game);
-    drawTiles(game, frameTick);
-    drawHintOverlay(r_, game, camX_, camY_);  // HINT OVERLAY (temporary)
-    drawPlayer(game);
-    drawHud(game);
-}
-
-void Renderer::drawTitle(int frameTick) {
-    const Texture& title = tex_.get("title");
-    const int cx = (logicalWidth() - title.w) / 2;
-    blit(title, nullptr, cx, logicalHeight() / 2 - title.h - 8);
-
-    const Texture& logo = tex_.get("logo");
-    blit(logo, nullptr, (logicalWidth() - logo.w) / 2, logicalHeight() / 2 + 16);
-
-    // Blinking prompt built from the on-screen arrow art, since the original
-    // ships no font we could borrow letters from.
-    if ((frameTick / 30) % 2 == 0) {
-        const Texture& a = tex_.get("arrow_d");
-        blit(a, nullptr, (logicalWidth() - a.w) / 2, logicalHeight() / 2 + 72);
-    }
-}
-
-void Renderer::drawLevelSelect(Mode mode, int selected, int unlocked) {
-    const int count = Level::levelCount(mode);
-    const int cols = 6;
-    const int cellW = 44, cellH = 40;
-    const int gridW = cols * cellW;
-    const int originX = (logicalWidth() - gridW) / 2;
-    const int originY = 90;
-
-    const Texture& hud = tex_.get("hud");
-    SDL_Rect iconSrc{mode == Mode::Normal ? 0 : 46, 0, mode == Mode::Normal ? 46 : 34, 44};
-    blit(hud, &iconSrc, (logicalWidth() - iconSrc.w) / 2, 20);
-
-    const Texture& numbers = tex_.get("numbers");
-    for (int i = 0; i < count; ++i) {
-        const int x = originX + (i % cols) * cellW;
-        const int y = originY + (i / cols) * cellH;
-        const bool locked = i >= unlocked;
-
-        if (i == selected) {
-            SDL_SetRenderDrawColor(r_, 255, 236, 120, 190);
-            SDL_Rect box{x - 3, y - 4, kGlyphW * 2 + 6, kGlyphH + 8};
-            SDL_RenderFillRect(r_, &box);
-        }
-        SDL_SetTextureAlphaMod(numbers.handle, locked ? 70 : 255);
-        drawNumber(i + 1, 2, x, y);
-        SDL_SetTextureAlphaMod(numbers.handle, 255);
-    }
-}
-
-void Renderer::drawClearedBanner(int frameTick) {
-    const Texture& t = tex_.get("cleared");
-    const int bob = static_cast<int>(3.0 * std::sin(frameTick * 0.12));
-    blit(t, nullptr, (logicalWidth() - t.w) / 2, logicalHeight() / 3 + bob);
-}
-
-void Renderer::drawEndScreen() {
-    const Texture& t = tex_.get("end");
-    blit(t, nullptr, (logicalWidth() - t.w) / 2, (logicalHeight() - t.h) / 2);
-}
-
-SDL_Rect Renderer::arrowRect(Dir d) const {
-    const int pad = 14;
-    const int size = 44;
-    const int cx = logicalWidth() - pad - size * 2;      // cluster origin x
-    const int cy = logicalHeight() - pad - size * 3;     // cluster origin y
-    switch (d) {
-        case Dir::Up:    return SDL_Rect{cx + size, cy, size, size};
-        case Dir::Left:  return SDL_Rect{cx, cy + size, size, size};
-        case Dir::Right: return SDL_Rect{cx + size * 2, cy + size, size, size};
-        case Dir::Down:  return SDL_Rect{cx + size, cy + size * 2, size, size};
-        default:         return SDL_Rect{0, 0, 0, 0};
-    }
-}
-
-void Renderer::drawTouchArrows(float alpha) {
-    if (alpha <= 0.01f) return;
-    const Uint8 a = static_cast<Uint8>(std::clamp(alpha, 0.0f, 1.0f) * 255);
-
-    const struct { Dir d; const char* tex; } arrows[4] = {
-        {Dir::Up, "arrow_u"}, {Dir::Down, "arrow_d"},
-        {Dir::Left, "arrow_l"}, {Dir::Right, "arrow_r"},
-    };
-
-    for (const auto& entry : arrows) {
-        const SDL_Rect box = arrowRect(entry.d);
-        SDL_SetRenderDrawBlendMode(r_, SDL_BLENDMODE_BLEND);
-        SDL_SetRenderDrawColor(r_, 0, 0, 0, static_cast<Uint8>(a * 0.35f));
-        SDL_RenderFillRect(r_, &box);
-
-        const Texture& t = tex_.get(entry.tex);
-        if (!t) continue;
-        SDL_SetTextureAlphaMod(t.handle, a);
-        blit(t, nullptr, box.x + (box.w - t.w) / 2, box.y + (box.h - t.h) / 2);
-        SDL_SetTextureAlphaMod(t.handle, 255);
-    }
-}
+    SDL_Renderer* r_ = nullptr;
+    TextureCache tex_;
+    ViewMode view_ = ViewMode::FullMap;
+    int camX_ = 0;
+    int camY_ = 0;
+};
 
 }  // namespace bc::gfx

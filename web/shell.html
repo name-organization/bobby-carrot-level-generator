@@ -32,10 +32,16 @@
     #bar > i { display: block; height: 100%; width: 0%; background: #c7792f; transition: width .2s; }
     footer { color: var(--dim); text-align: center; max-width: 560px;
       display: flex; flex-direction: column; align-items: center; gap: 8px; }
-    kbd { background: #263020; border: 1px solid #36422c; border-bottom-width: 2px;
+    kbd, .key { background: #263020; border: 1px solid #36422c; border-bottom-width: 2px;
       border-radius: 4px; padding: 0 5px; color: var(--ink); }
+    /* Key labels that also work as buttons: clicking one presses that key. */
+    .key { font: inherit; line-height: inherit; margin: 0; cursor: pointer; }
+    .key:hover { background: #33402a; border-color: #c7792f; }
+    .key:active { transform: translateY(1px); border-bottom-width: 1px; }
     @media (max-width: 640px) { footer .desktop-only { display: none; } }
     @media (min-width: 641px) { footer .mobile-only { display: none; } }
+    /* A key and its label wrap to the next line together. */
+    footer span span, #game-controls > span { white-space: nowrap; }
 
     /* Start page: covers the canvas while the game is on its title screen. */
     #menu {
@@ -54,7 +60,6 @@
     #menu .btn:not(.selected) { background: #263020; border-color: #36422c; }
     .btn:active { transform: translateY(1px); border-bottom-width: 2px; }
     #game-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px 16px; }
-    #game-controls .btn { min-width: 0; padding: 4px 14px; }
     .hidden { display: none !important; }
   </style>
 </head>
@@ -76,19 +81,27 @@
 </div>
 
 <footer id="menu-footer" class="hidden">
-  <span class="desktop-only"><kbd>↑</kbd><kbd>↓</kbd> choose · <kbd>Enter</kbd> confirm</span>
+  <span class="desktop-only">
+    <button class="key" type="button" tabindex="-1" data-menu="up">↑</button><button class="key" type="button" tabindex="-1" data-menu="down">↓</button> choose ·
+    <button class="key" type="button" tabindex="-1" data-menu="enter">Enter</button> confirm
+  </span>
 </footer>
 
 <footer id="game-footer" class="hidden">
+  <!-- data-key is the SDL keycode the label stands for: the letter's code,
+       27 = Esc, 1073741903..1073741906 = Right, Left, Down, Up. -->
   <div id="game-controls">
-    <span><kbd>H</kbd> show hint</span>
-    <span><kbd>G</kbd> generate level</span>
-    <button class="btn" id="btn-menu" type="button">Main menu</button>
+    <span><button class="key" type="button" tabindex="-1" data-key="104">H</button> show hint</span>
+    <span><button class="key" type="button" tabindex="-1" data-key="103">G</button> generate level</span>
+    <span><button class="key" type="button" tabindex="-1" data-key="113">Q</button> main menu</span>
   </div>
   <span class="desktop-only">
-    <kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> or <kbd>WASD</kbd> move ·
-    <kbd>R</kbd> restart · <kbd>F</kbd> view · <kbd>T</kbd> carrot/egg mode ·
-    <kbd>M</kbd> mute · <kbd>Esc</kbd> levels
+    <span><button class="key" type="button" tabindex="-1" data-key="1073741906">↑</button><button class="key" type="button" tabindex="-1" data-key="1073741905">↓</button><button class="key" type="button" tabindex="-1" data-key="1073741904">←</button><button class="key" type="button" tabindex="-1" data-key="1073741903">→</button> move</span> ·
+    <span><button class="key" type="button" tabindex="-1" data-key="114">R</button> restart</span> ·
+    <span><button class="key" type="button" tabindex="-1" data-key="102">F</button> view</span> ·
+    <span><button class="key" type="button" tabindex="-1" data-key="116">T</button> carrot/egg mode</span> ·
+    <span><button class="key" type="button" tabindex="-1" data-key="109">M</button> mute</span> ·
+    <span><button class="key" type="button" tabindex="-1" data-key="27">Esc</button> levels</span>
   </span>
   <span class="mobile-only">swipe to move, tap the arrows, tap to confirm</span>
 </footer>
@@ -143,7 +156,24 @@
   }
   document.getElementById('btn-generate').addEventListener('click', () => callGame('bc_generate_level'));
   document.getElementById('btn-select').addEventListener('click', () => callGame('bc_select_level'));
-  document.getElementById('btn-menu').addEventListener('click', () => callGame('bc_main_menu'));
+
+  // Clickable key labels. Pressing the mouse on them must not take the focus,
+  // or Space in the game would click the label again.
+  document.querySelectorAll('.key').forEach((k) => {
+    k.addEventListener('mousedown', (e) => e.preventDefault());
+  });
+  document.querySelectorAll('.key[data-key]').forEach((k) => {
+    k.addEventListener('click', () => {
+      if (Module._bc_press_key) Module._bc_press_key(Number(k.dataset.key));
+    });
+  });
+  document.querySelectorAll('.key[data-menu]').forEach((k) => {
+    k.addEventListener('click', () => {
+      const action = k.dataset.menu;
+      if (action === 'enter') menuButtons[menuIndex].click();
+      else selectMenu(menuIndex + (action === 'up' ? -1 : 1));
+    });
+  });
 
   // Arrow keys and space scroll the page by default, which fights the game.
   window.addEventListener('keydown', (e) => {

@@ -36,6 +36,8 @@ public:
     void generateLevel();
     void openLevelSelect();
     void goToMainMenu();
+    // Same as pressing a non-direction key, for the clickable key labels.
+    void pressKey(SDL_Keycode key);
 
     // Test hooks used by the screenshot tool.
     void forceLevel(Mode mode, int index);
@@ -47,6 +49,9 @@ private:
     void onDirection(Dir d, bool pressed);
     void onConfirm();
     void onBack();
+    void onKey(SDL_Keycode key);
+    int levelUnderPoint(float logicalX, float logicalY) const;
+    void chooseLevel(int index);
     void stepLogic();
     void render();
 

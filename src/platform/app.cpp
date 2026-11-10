@@ -278,6 +278,61 @@ void App::onBack() {
     }
 }
 
+void App::pressKey(SDL_Keycode key) {
+    mixer_.unlock();
+    const Dir d = keyToDir(key);
+    if (d != Dir::None) {
+        // A click is a short tap, like the on-screen arrows.
+        onDirection(d, true);
+        onDirection(d, false);
+        return;
+    }
+    onKey(key);
+}
+
+// Level select: which level number is under a point in logical pixels, or -1.
+int App::levelUnderPoint(float lx, float ly) const {
+    if (lx < 0.0f || ly < 0.0f) return -1;
+    return gfx_.levelAt(mode_, static_cast<int>(lx), static_cast<int>(ly));
+}
+
+// Clicking a level number: highlight it and start it unless it is locked.
+void App::chooseLevel(int index) {
+    selected_ = index;
+    const int unlocked = mode_ == Mode::Normal ? save_.unlockedNormal : save_.unlockedEgg;
+    if (index < unlocked) startLevel(mode_, index);
+}
+
+// Every key that is not a direction. Also reached by clicking the key labels
+// under the game on the web page, through pressKey().
+void App::onKey(SDL_Keycode key) {
+    switch (key) {
+        case SDLK_RETURN: case SDLK_SPACE: case SDLK_KP_ENTER: onConfirm(); break;
+        case SDLK_ESCAPE: case SDLK_BACKSPACE: onBack(); break;
+        case SDLK_r: if (screen_ == Screen::Play) game_.restart(); break;
+        case SDLK_h: if (screen_ == Screen::Play) game_.toggleHint(); break;
+        case SDLK_f: gfx_.toggleViewMode(); applyLayout(); break;
+        case SDLK_m: mixer_.toggleMuted(); save_.muted = mixer_.muted(); saveProgress(save_); break;
+        case SDLK_n:
+            if (screen_ == Screen::Play &&
+                game_.levelIndex() + 1 < Level::levelCount(mode_))
+                startLevel(mode_, game_.levelIndex() + 1);
+            break;
+        case SDLK_p:
+            if (screen_ == Screen::Play && game_.levelIndex() > 0)
+                startLevel(mode_, game_.levelIndex() - 1);
+            break;
+        case SDLK_t:
+            mode_ = mode_ == Mode::Normal ? Mode::Egg : Mode::Normal;
+            selected_ = 0;
+            if (screen_ == Screen::Play) startLevel(mode_, 0);
+            break;
+        case SDLK_g: generateLevel(); break;
+        case SDLK_q: goToMainMenu(); break;
+        default: break;
+    }
+}
+
 void App::handleEvent(const SDL_Event& e) {
     switch (e.type) {
         case SDL_QUIT:
@@ -295,30 +350,7 @@ void App::handleEvent(const SDL_Event& e) {
                 onDirection(d, true);
                 return;
             }
-            switch (e.key.keysym.sym) {
-                case SDLK_RETURN: case SDLK_SPACE: case SDLK_KP_ENTER: onConfirm(); break;
-                case SDLK_ESCAPE: case SDLK_BACKSPACE: onBack(); break;
-                case SDLK_r: if (screen_ == Screen::Play) game_.restart(); break;
-                case SDLK_h: if (screen_ == Screen::Play) game_.toggleHint(); break;
-                case SDLK_f: gfx_.toggleViewMode(); applyLayout(); break;
-                case SDLK_m: mixer_.toggleMuted(); save_.muted = mixer_.muted(); saveProgress(save_); break;
-                case SDLK_n:
-                    if (screen_ == Screen::Play &&
-                        game_.levelIndex() + 1 < Level::levelCount(mode_))
-                        startLevel(mode_, game_.levelIndex() + 1);
-                    break;
-                case SDLK_p:
-                    if (screen_ == Screen::Play && game_.levelIndex() > 0)
-                        startLevel(mode_, game_.levelIndex() - 1);
-                    break;
-                case SDLK_t:
-                    mode_ = mode_ == Mode::Normal ? Mode::Egg : Mode::Normal;
-                    selected_ = 0;
-                    if (screen_ == Screen::Play) startLevel(mode_, 0);
-                    break;
-                case SDLK_g: generateLevel(); break;
-                default: break;
-            }
+            onKey(e.key.keysym.sym);
             return;
         }
 
@@ -363,6 +395,19 @@ void App::handleEvent(const SDL_Event& e) {
             const float dy = e.tfinger.y - swipeStartY_;
 
             if (std::fabs(dx) < kSwipeThreshold && std::fabs(dy) < kSwipeThreshold) {
+                if (screen_ == Screen::Select) {
+                    int wx = 0, wy = 0;
+                    SDL_GetWindowSize(window_, &wx, &wy);
+                    float lx = 0.0f, ly = 0.0f;
+                    windowToLogical(window_, gfx_.logicalWidth(), gfx_.logicalHeight(),
+                                    static_cast<int>(e.tfinger.x * wx),
+                                    static_cast<int>(e.tfinger.y * wy), lx, ly);
+                    const int level = levelUnderPoint(lx, ly);
+                    if (level >= 0) {
+                        chooseLevel(level);
+                        return;
+                    }
+                }
                 if (screen_ != Screen::Play) onConfirm();
                 return;
             }
@@ -376,9 +421,10 @@ void App::handleEvent(const SDL_Event& e) {
 
         case SDL_MOUSEBUTTONDOWN: {
             mixer_.unlock();
-            float lx = 0.0f, ly = 0.0f;
-            windowToLogical(window_, gfx_.logicalWidth(), gfx_.logicalHeight(), e.button.x,
-                            e.button.y, lx, ly);
+            // With a logical size set, SDL already reports mouse positions in
+            // logical pixels, so they need no conversion.
+            const float lx = static_cast<float>(e.button.x);
+            const float ly = static_cast<float>(e.button.y);
             if (screen_ == Screen::Play) {
                 for (Dir d : {Dir::Up, Dir::Down, Dir::Left, Dir::Right}) {
                     if (pointInRect(static_cast<int>(lx), static_cast<int>(ly),
@@ -388,8 +434,22 @@ void App::handleEvent(const SDL_Event& e) {
                         return;
                     }
                 }
+            } else if (screen_ == Screen::Select) {
+                // Only a click on a level number does anything here.
+                const int level = levelUnderPoint(lx, ly);
+                if (level >= 0) chooseLevel(level);
             } else {
                 onConfirm();
+            }
+            return;
+        }
+
+        case SDL_MOUSEMOTION: {
+            // Hovering a level number highlights it, as the arrow keys do.
+            if (screen_ == Screen::Select && e.motion.which != SDL_TOUCH_MOUSEID) {
+                const int level = levelUnderPoint(static_cast<float>(e.motion.x),
+                                                  static_cast<float>(e.motion.y));
+                if (level >= 0) selected_ = level;
             }
             return;
         }

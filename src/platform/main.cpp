@@ -69,7 +69,8 @@ int screenshot(const std::string& assetRoot, bc::Mode mode, int level, int warmu
 extern "C" {
 EMSCRIPTEN_KEEPALIVE void bc_generate_level() { g_app.generateLevel(); }
 EMSCRIPTEN_KEEPALIVE void bc_select_level()   { g_app.openLevelSelect(); }
-EMSCRIPTEN_KEEPALIVE void bc_main_menu()      { g_app.goToMainMenu(); }
+// key is an SDL keycode: the lower-case letter's code, or 27 for Escape.
+EMSCRIPTEN_KEEPALIVE void bc_press_key(int key) { g_app.pressKey(key); }
 }
 #endif
 
