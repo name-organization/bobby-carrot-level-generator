@@ -18,6 +18,11 @@ set(CORE_SOURCES
     src/core/hint.cpp
 )
 
+# base64 library
+set(BASE64_SOURCES
+    src/third_party/base64/base64.cpp
+)
+
 # CaDiCaL SAT solver, used by the hint (src/core/sat.cpp). Built from its
 # sources without its own configure script: NBUILD makes it guess the build
 # info, and the other switches drop logging, tracing and the fork-based file
@@ -32,6 +37,7 @@ set_target_properties(cadical PROPERTIES CXX_STANDARD 17)
 
 set(GAME_SOURCES
     ${CORE_SOURCES}
+    ${BASE64_SOURCES}
     src/gfx/texture.cpp
     src/gfx/renderer.cpp
     src/gfx/hint_overlay.cpp  # HINT OVERLAY (temporary), see src/gfx/hint_overlay.hpp
@@ -44,6 +50,7 @@ set(GAME_SOURCES
 
 add_executable(bobby ${GAME_SOURCES})
 target_link_libraries(bobby PRIVATE cadical)
+target_include_directories(bobby PRIVATE src/third_party/base64)
 
 # stb_vorbis is third-party C that warns a lot; keep our own warnings loud.
 set_source_files_properties(src/third_party/stb_vorbis_impl.c
