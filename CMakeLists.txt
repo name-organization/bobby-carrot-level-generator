@@ -14,6 +14,8 @@ set(CORE_SOURCES
     src/core/rules.cpp
     src/core/player.cpp
     src/core/game.cpp
+    src/core/sat.cpp
+    src/core/hint.cpp
 )
 
 # CaDiCaL SAT solver, used by the hint (src/core/sat.cpp). Built from its
@@ -40,6 +42,7 @@ set(GAME_SOURCES
 )
 
 add_executable(bobby ${GAME_SOURCES})
+target_link_libraries(bobby PRIVATE cadical)
 
 # stb_vorbis is third-party C that warns a lot; keep our own warnings loud.
 set_source_files_properties(src/third_party/stb_vorbis_impl.c
@@ -92,6 +95,7 @@ else()
     # under the reconstructed tile semantics. Native only -- it is a test, not
     # something to ship to the browser.
     add_executable(solve_levels tests/solve_levels.cpp ${CORE_SOURCES})
+    target_link_libraries(solve_levels PRIVATE cadical)
 
     enable_testing()
     add_test(NAME levels_solvable
