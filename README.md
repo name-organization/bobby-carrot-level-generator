@@ -2,6 +2,8 @@
 
 Here is C++ / WebAssembly implementation of Bobby Carrot game.
 
+Dependencies: SDL2 library, game assets. `make run` installs them locally.
+
 To build and run Docker container with game:
 ```bash
 $ make run
