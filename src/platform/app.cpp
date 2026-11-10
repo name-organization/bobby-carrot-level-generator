@@ -274,15 +274,6 @@ void App::handleEvent(const SDL_Event& e) {
                     selected_ = 0;
                     if (screen_ == Screen::Play) startLevel(mode_, 0);
                     break;
-                case SDLK_g:
-                    if (screen_ == Screen::Play || screen_ == Screen::Select) {
-                        game_.loadProcedural(0); // 0 — случайный сид
-                        screen_ = Screen::Play;
-                        held_ = Dir::None;
-                        pendingTap_ = Dir::None;
-                        mixer_.stopMusic();
-                    }
-                    break;
                 default: break;
             }
             return;
