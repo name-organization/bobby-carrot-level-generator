@@ -1,4 +1,5 @@
 #include "game.hpp"
+#include "generator.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -22,6 +23,15 @@ bool Game::load(Mode mode, int index) {
     mode_  = mode;
     index_ = index;
     levelReference_.clear();
+    restart();
+    return true;
+}
+
+bool Game::loadProcedural(unsigned int seed) {
+    Level next = LevelGenerator::generateRandom(seed);
+    level_ = next;
+    mode_ = Mode::Normal;
+    index_ = -1; // Обозначает пользовательский/процедурный уровень
     restart();
     return true;
 }
