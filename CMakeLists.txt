@@ -34,6 +34,7 @@ set(GAME_SOURCES
     ${CORE_SOURCES}
     src/gfx/texture.cpp
     src/gfx/renderer.cpp
+    src/gfx/hint_overlay.cpp  # HINT OVERLAY (temporary), see src/gfx/hint_overlay.hpp
     src/audio/audio.cpp
     src/platform/storage.cpp
     src/platform/app.cpp
