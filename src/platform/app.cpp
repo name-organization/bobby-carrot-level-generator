@@ -190,6 +190,11 @@ void App::rememberProgress() {
 }
 
 void App::advanceLevel() {
+    // A generated level is followed by another generated one.
+    if (game_.levelIndex() < 0) {
+        generateLevel();
+        return;
+    }
     const int next = game_.levelIndex() + 1;
     if (next < Level::levelCount(mode_)) {
         startLevel(mode_, next);
