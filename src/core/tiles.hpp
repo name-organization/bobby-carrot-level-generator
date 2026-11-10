@@ -16,6 +16,15 @@ namespace bc {
 
 enum Tile : std::uint8_t {
     // 0..17 -- scenery, water, island border. Never walkable.
+    T_DEFAULT_GRASS    = 0,
+    T_SINGLE_GRASS     = 9,
+    T_FENCE_LVR        = 12,
+    T_FENCE_VV         = 13,
+    T_FENCE_VVR        = 14,
+    T_FENCE_LVV        = 15,
+    T_FENCE_VR         = 16,
+    T_FENCE_LV         = 17,
+
     T_FIRST_WALKABLE   = 18,
 
     T_GROUND           = 18,  // plain dirt path

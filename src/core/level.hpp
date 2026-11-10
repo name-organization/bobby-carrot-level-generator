@@ -40,6 +40,7 @@ struct Level {
     int carrotTotal = 0;
     int eggTotal    = 0;
     std::string name;  // from a leading ';' comment, when the file has one
+    //std::vector<Coord> successPath = {};
 
     // `error` receives a message naming the line and column when parsing fails.
     bool loadFromText(std::string_view text, std::string* error = nullptr);
