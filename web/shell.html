@@ -52,7 +52,7 @@
   <span class="desktop-only">
     <kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> or <kbd>WASD</kbd> move ·
     <kbd>R</kbd> restart · <kbd>F</kbd> view · <kbd>T</kbd> carrot/egg mode ·
-    <kbd>M</kbd> mute · <kbd>Esc</kbd> levels
+    <kbd>M</kbd> mute · <kbd>Esc</kbd> levels · <kbd>E</kbd> export level as URL
   </span>
   <span class="mobile-only">swipe to move, tap the arrows, tap to confirm</span>
 </footer>
@@ -70,7 +70,20 @@
 
   var Module = {
     canvas: canvas,
-    preRun: [],
+    preRun: [() => {
+      // Read ?level=<base64url> from the URL and forward it to main(argc, argv) as --level=<base64url>
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const level = params.get('level');
+        if (level) {
+          Module.arguments = (Module.arguments || []).concat([`--level=${level}`]);
+          console.log('[bobby] start with level payload, len=' + level.length);
+        }
+      } catch (e) {
+        console.warn('[bobby] failed to parse URL:', e);
+      }
+    }],
+
     postRun: [() => { loader.classList.add('hidden'); canvas.focus(); }],
     print: (...a) => console.log(...a),
     printErr: (...a) => console.warn(...a),

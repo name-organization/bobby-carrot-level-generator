@@ -18,6 +18,8 @@ public:
     bool init(const std::string& assetRoot, bool headless);
     void shutdown();
 
+    void startFromEncoded(const std::string& base64Level);
+
     // One display frame: drains events, runs as many fixed logic ticks as the
     // elapsed wall time calls for, then draws once.
     void frame();

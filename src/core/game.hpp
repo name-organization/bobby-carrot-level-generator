@@ -18,6 +18,7 @@ public:
 
     bool load(Mode mode, int index);
     bool loadProcedural(unsigned int seed = 0);
+    bool loadLevel(Level level);
     void restart();
 
     // Queue input for the next tick. `held` is a continuously pressed

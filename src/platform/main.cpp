@@ -67,6 +67,7 @@ int screenshot(const std::string& assetRoot, bc::Mode mode, int level, int warmu
 int main(int argc, char** argv) {
     std::string assetRoot = "assets/v1";
     bool handheld = false;
+    std::string startLevelB64;
 
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--handheld") == 0) handheld = true;
@@ -75,6 +76,9 @@ int main(int argc, char** argv) {
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--assets") == 0 && i + 1 < argc) {
             assetRoot = argv[++i];
+        }
+        else if (std::strncmp(argv[i], "--level=", 8) == 0) {
+            startLevelB64 = argv[i] + 8;
         }
 #ifndef __EMSCRIPTEN__
         else if (std::strcmp(argv[i], "--shot") == 0 && i + 4 < argc) {
@@ -89,6 +93,11 @@ int main(int argc, char** argv) {
 
     if (!g_app.init(assetRoot, /*headless=*/false)) return 1;
     if (handheld) g_app.setViewMode(bc::gfx::ViewMode::Handheld);
+
+    // If shell.html forwarded ?level=<base64url> jump into that level
+    if (!startLevelB64.empty()) {
+        g_app.startFromEncoded(startLevelB64);
+    }
 
 #ifdef __EMSCRIPTEN__
     // Zero means "drive from requestAnimationFrame", which keeps the canvas in

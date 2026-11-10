@@ -61,7 +61,7 @@ struct Level {
 
     // base64 encoding/decoding of level grid
     std::string encode() const;
-    //void decode(const std::string& base64Str);
+    bool decode(const std::string& base64Str, std::string* error = nullptr);
 };
 
 }  // namespace bc
