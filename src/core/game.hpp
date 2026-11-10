@@ -1,7 +1,9 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
+#include "hint.hpp"
 #include "level.hpp"
 #include "player.hpp"
 #include "rules.hpp"
@@ -49,7 +51,35 @@ public:
     // Events raised during the last tick, as ev:: bit flags.
     unsigned lastEvents() const     { return lastEvents_; }
 
+    // --- hint ---------------------------------------------------------------
+    // Reference solution of the loaded level, as moves from the start. The
+    // level generator will ship one with every level; without it the first
+    // hint finds a path with the solver and keeps it as the reference.
+    void setReference(const std::vector<Dir>& moves);
+
+    // Asks for a hint. Answered on the next tick at which Bobby stands still,
+    // so the grid is never read halfway through a step.
+    void requestHint() { hintRequested_ = true; }
+
+    // The H key: shows a hint, or hides the one on screen (a pending request
+    // counts as shown). Hiding keeps the remembered route, so the next hint
+    // is still cheap.
+    void toggleHint();
+    void hideHint();
+
+    // The last answer, or nullptr if there is none for the current position.
+    // Moving along the suggested path shortens it. Moving off it re-routes
+    // back to the remembered path without the solver; if that route is
+    // broken, the hint disappears until the next requestHint().
+    // Its `moves` always start at Bobby's current cell, in step with hintPath().
+    const hint::Result* hint() const { return hintShown_ ? &hint_ : nullptr; }
+    // Cells still ahead on the suggested path, the next one first.
+    const std::vector<Coord>& hintPath() const { return hintPath_; }
+
 private:
+    void answerHint(bool rejoinOnly);
+    void followHint();
+
     std::string root_;
     Level level_;
     Grid grid_;
@@ -63,6 +93,14 @@ private:
     Dir held_ = Dir::None;
     Dir tap_  = Dir::None;
     bool wasMoving_ = false;
+
+    std::vector<Coord> levelReference_;   // from the level start, may be empty
+    std::vector<Coord> reference_;        // what the next hint builds on
+    hint::Result hint_;
+    std::vector<Coord> hintPath_;
+    Coord hintCell_{};                    // where Bobby was when hintPath_ was valid
+    bool hintShown_ = false;
+    bool hintRequested_ = false;
 };
 
 }  // namespace bc
