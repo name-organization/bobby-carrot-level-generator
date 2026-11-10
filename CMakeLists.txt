@@ -16,6 +16,18 @@ set(CORE_SOURCES
     src/core/game.cpp
 )
 
+# CaDiCaL SAT solver, used by the hint (src/core/sat.cpp). Built from its
+# sources without its own configure script: NBUILD makes it guess the build
+# info, and the other switches drop logging, tracing and the fork-based file
+# helpers that the browser has no use for. Same flags as tools/build_hint_tests.sh.
+file(GLOB CADICAL_SOURCES CONFIGURE_DEPENDS
+     src/third_party/cadical/*.cpp src/third_party/cadical/*.c)
+add_library(cadical STATIC ${CADICAL_SOURCES})
+target_compile_definitions(cadical PRIVATE
+    NDEBUG NBUILD QUIET NTRACING NCONTRACTS NCLOSEFROM)
+target_compile_options(cadical PRIVATE -O2 -w)
+set_target_properties(cadical PROPERTIES CXX_STANDARD 17)
+
 set(GAME_SOURCES
     ${CORE_SOURCES}
     src/gfx/texture.cpp
