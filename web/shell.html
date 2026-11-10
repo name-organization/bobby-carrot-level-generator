@@ -1,45 +1,78 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<meta name="color-scheme" content="dark">
-<title>Bobby Carrot</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>🥕</text></svg>">
-<style>
-  :root { --bg: #11150f; --panel: #1b2117; --ink: #d8e3c8; --dim: #6f7d63; }
-  * { box-sizing: border-box; }
-  html, body {
-    margin: 0; height: 100%; background: var(--bg); color: var(--ink);
-    font: 14px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-    overscroll-behavior: none; touch-action: none;
-  }
-  body { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 16px; }
-  #stage { position: relative; display: flex; align-items: center; justify-content: center; }
-  canvas {
-    display: block; background: #000;
-    image-rendering: pixelated; image-rendering: crisp-edges;
-    max-width: min(92vw, 70vh); max-height: 70vh; width: auto; height: auto;
-    border-radius: 6px; box-shadow: 0 10px 40px rgba(0,0,0,.6);
-    outline: none;
-  }
-  #loader {
-    position: absolute; inset: 0; display: grid; place-items: center;
-    background: var(--panel); border-radius: 6px; text-align: center; padding: 20px;
-  }
-  #loader.hidden { display: none; }
-  #bar { width: 180px; height: 6px; background: #2b3425; border-radius: 3px; overflow: hidden; margin-top: 10px; }
-  #bar > i { display: block; height: 100%; width: 0%; background: #c7792f; transition: width .2s; }
-  footer { color: var(--dim); text-align: center; max-width: 560px; }
-  kbd { background: #263020; border: 1px solid #36422c; border-bottom-width: 2px;
-        border-radius: 4px; padding: 0 5px; color: var(--ink); }
-  @media (max-width: 640px) { footer .desktop-only { display: none; } }
-</style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <title>Bobby Carrot</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>🥕</text></svg>">
+  <style>
+    :root { --bg: #11150f; --panel: #1b2117; --ink: #d8e3c8; --dim: #6f7d63; }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; height: 100%; background: var(--bg); color: var(--ink);
+      font: 14px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      overscroll-behavior: none; touch-action: none;
+    }
+    body { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 16px; }
+    #stage { position: relative; display: flex; align-items: center; justify-content: center; }
+    canvas {
+      display: block; background: #000;
+      image-rendering: pixelated; image-rendering: crisp-edges;
+      max-width: min(92vw, 70vh); max-height: 70vh; width: auto; height: auto;
+      border-radius: 6px; box-shadow: 0 10px 40px rgba(0,0,0,.6);
+      outline: none;
+    }
+    #loader {
+      position: absolute; inset: 0; display: grid; place-items: center;
+      background: var(--panel); border-radius: 6px; text-align: center; padding: 20px;
+    }
+    #loader.hidden { display: none; }
+    #bar { width: 180px; height: 6px; background: #2b3425; border-radius: 3px; overflow: hidden; margin-top: 10px; }
+    #bar > i { display: block; height: 100%; width: 0%; background: #c7792f; transition: width .2s; }
+    footer { color: var(--dim); text-align: center; max-width: 560px;
+      display: flex; flex-direction: column; align-items: center; gap: 8px; }
+    kbd, .key { background: #263020; border: 1px solid #36422c; border-bottom-width: 2px;
+      border-radius: 4px; padding: 0 5px; color: var(--ink); }
+    /* Key labels that also work as buttons: clicking one presses that key. */
+    .key { font: inherit; line-height: inherit; margin: 0; cursor: pointer; }
+    .key:hover { background: #33402a; border-color: #c7792f; }
+    .key:active { transform: translateY(1px); border-bottom-width: 1px; }
+    @media (max-width: 640px) { footer .desktop-only { display: none; } }
+    @media (min-width: 641px) { footer .mobile-only { display: none; } }
+    /* Key hints under the game, one group per row. A key and its label wrap
+       to the next line together. */
+    footer .row { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 18px; }
+    footer .row > span { white-space: nowrap; }
+
+    /* Start page: covers the canvas while the game is on its title screen. */
+    #menu {
+      position: absolute; inset: 0; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 14px; padding: 20px;
+      background: var(--panel); border-radius: 6px; text-align: center;
+    }
+    #menu h1 { margin: 0 0 10px; font-size: 26px; letter-spacing: .04em; }
+    #menu h1 span { display: block; font-size: 40px; line-height: 1.2; }
+    .btn {
+      font: inherit; color: var(--ink); background: #263020; cursor: pointer;
+      border: 1px solid #36422c; border-bottom-width: 3px; border-radius: 6px;
+      padding: 8px 18px; min-width: 200px;
+    }
+    .btn:hover, .btn:focus-visible, .btn.selected { background: #33402a; border-color: #c7792f; outline: none; }
+    #menu .btn:not(.selected) { background: #263020; border-color: #36422c; }
+    .btn:active { transform: translateY(1px); border-bottom-width: 2px; }
+    .hidden { display: none !important; }
+  </style>
 </head>
 <body>
 
 <div id="stage">
   <canvas id="canvas" tabindex="-1" oncontextmenu="event.preventDefault()"></canvas>
+  <div id="menu" class="hidden">
+    <h1><span>🥕</span>Bobby Carrot</h1>
+    <button class="btn" id="btn-generate" type="button">Generate level</button>
+    <button class="btn" id="btn-select" type="button">Select level</button>
+  </div>
   <div id="loader">
     <div>
       <div id="status">loading…</div>
@@ -48,12 +81,37 @@
   </div>
 </div>
 
-<footer>
+<footer id="menu-footer" class="hidden">
   <span class="desktop-only">
-    <kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> or <kbd>WASD</kbd> move ·
-    <kbd>R</kbd> restart · <kbd>F</kbd> view · <kbd>T</kbd> carrot/egg mode ·
-    <kbd>M</kbd> mute · <kbd>Esc</kbd> levels
+    <button class="key" type="button" tabindex="-1" data-menu="up">↑</button><button class="key" type="button" tabindex="-1" data-menu="down">↓</button> choose ·
+    <button class="key" type="button" tabindex="-1" data-menu="enter">Enter</button> confirm
   </span>
+</footer>
+
+<footer id="game-footer" class="hidden">
+  <!-- data-key is the SDL keycode the label stands for: the letter's code,
+       13 = Enter, 27 = Esc, 1073741903..1073741906 = Right, Left, Down, Up.
+       data-show lists the screens an item is shown on: play (built-in level),
+       gen (generated level), select (level select), end (ending). -->
+  <div class="row">
+    <span data-show="play gen"><button class="key" type="button" tabindex="-1" data-key="104">H</button> show hint</span>
+    <span data-show="play gen"><button class="key" type="button" tabindex="-1" data-key="114">R</button> restart</span>
+    <span data-show="play gen"><button class="key" type="button" tabindex="-1" data-key="103">G</button> generate level</span>
+    <span data-show="select"><button class="key" type="button" tabindex="-1" data-key="1073741906">↑</button><button class="key" type="button" tabindex="-1" data-key="1073741905">↓</button><button class="key" type="button" tabindex="-1" data-key="1073741904">←</button><button class="key" type="button" tabindex="-1" data-key="1073741903">→</button> choose</span>
+    <span data-show="select"><button class="key" type="button" tabindex="-1" data-key="13">Enter</button> play</span>
+    <span data-show="end"><button class="key" type="button" tabindex="-1" data-key="13">Enter</button> continue</span>
+    <span data-show="play select"><button class="key" type="button" tabindex="-1" data-key="116">T</button> carrot/egg mode</span>
+  </div>
+  <div class="row">
+    <span data-show="play gen"><button class="key" type="button" tabindex="-1" data-key="1073741906">↑</button><button class="key" type="button" tabindex="-1" data-key="1073741905">↓</button><button class="key" type="button" tabindex="-1" data-key="1073741904">←</button><button class="key" type="button" tabindex="-1" data-key="1073741903">→</button> move</span>
+    <span data-show="play gen"><button class="key" type="button" tabindex="-1" data-key="27">Esc</button> level list</span>
+    <span data-show="select"><button class="key" type="button" tabindex="-1" data-key="103">G</button> generate level</span>
+    <span data-show="play gen select end"><button class="key" type="button" tabindex="-1" data-key="113">Q</button> main menu</span>
+  </div>
+  <div class="row">
+    <span data-show="play gen select end"><button class="key" type="button" tabindex="-1" data-key="102">F</button> view</span>
+    <span data-show="play gen select end"><button class="key" type="button" tabindex="-1" data-key="109">M</button> mute</span>
+  </div>
   <span class="mobile-only">swipe to move, tap the arrows, tap to confirm</span>
 </footer>
 
@@ -62,6 +120,78 @@
   const loader = document.getElementById('loader');
   const statusEl = document.getElementById('status');
   const barFill = document.querySelector('#bar > i');
+  const menu = document.getElementById('menu');
+  const gameFooter = document.getElementById('game-footer');
+  const menuFooter = document.getElementById('menu-footer');
+  const menuButtons = [document.getElementById('btn-generate'),
+    document.getElementById('btn-select')];
+  let menuIndex = 0;
+
+  // One highlighted button at a time, whether picked by keys or the mouse.
+  function selectMenu(i) {
+    menuIndex = (i + menuButtons.length) % menuButtons.length;
+    menuButtons.forEach((b, k) => b.classList.toggle('selected', k === menuIndex));
+    menuButtons[menuIndex].focus();
+  }
+  menuButtons.forEach((b, k) => {
+    b.addEventListener('mouseenter', () => selectMenu(k));
+    b.addEventListener('focus', () => { if (k !== menuIndex) selectMenu(k); });
+  });
+
+  // Screen numbers match App::Screen in src/platform/app.hpp.
+  const SCREEN_TITLE = 0;
+  const SCREEN_SELECT = 1;
+  const SCREEN_END = 4;
+
+  // Only the key hints that work on the current screen are shown.
+  function showHintsFor(screen) {
+    document.querySelectorAll('#game-footer [data-show]').forEach((item) => {
+      item.classList.toggle('hidden', !item.dataset.show.split(' ').includes(screen));
+    });
+  }
+
+  // While the start page is up, keys drive its buttons and do not reach the
+  // game: Up/Down choose, Enter or Space confirm. G still generates a level
+  // from anywhere. Registered before SDL adds its own listeners, so it runs
+  // first.
+  window.addEventListener('keydown', (e) => {
+    if (menu.classList.contains('hidden') || e.key === 'g' || e.key === 'G') return;
+    e.stopImmediatePropagation();
+    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      e.preventDefault();
+      selectMenu(menuIndex + (e.key === 'ArrowUp' ? -1 : 1));
+    } else if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      if (!e.repeat) menuButtons[menuIndex].click();
+    }
+  }, true);
+
+  // The game switches screen on its next frame and then calls
+  // onScreenChange, which moves the focus where it belongs.
+  function callGame(name) {
+    const fn = Module['_' + name];
+    if (fn) fn();
+  }
+  document.getElementById('btn-generate').addEventListener('click', () => callGame('bc_generate_level'));
+  document.getElementById('btn-select').addEventListener('click', () => callGame('bc_select_level'));
+
+  // Clickable key labels. Pressing the mouse on them must not take the focus,
+  // or Space in the game would click the label again.
+  document.querySelectorAll('.key').forEach((k) => {
+    k.addEventListener('mousedown', (e) => e.preventDefault());
+  });
+  document.querySelectorAll('.key[data-key]').forEach((k) => {
+    k.addEventListener('click', () => {
+      if (Module._bc_press_key) Module._bc_press_key(Number(k.dataset.key));
+    });
+  });
+  document.querySelectorAll('.key[data-menu]').forEach((k) => {
+    k.addEventListener('click', () => {
+      const action = k.dataset.menu;
+      if (action === 'enter') menuButtons[menuIndex].click();
+      else selectMenu(menuIndex + (action === 'up' ? -1 : 1));
+    });
+  });
 
   // Arrow keys and space scroll the page by default, which fights the game.
   window.addEventListener('keydown', (e) => {
@@ -72,6 +202,21 @@
     canvas: canvas,
     preRun: [],
     postRun: [() => { loader.classList.add('hidden'); canvas.focus(); }],
+    // Called by App::reportScreen() whenever the game changes screen, or a
+    // generated level replaces a built-in one or the other way round.
+    onScreenChange: (screen, generated) => {
+      const onTitle = screen === SCREEN_TITLE;
+      showHintsFor(screen === SCREEN_SELECT ? 'select'
+                   : screen === SCREEN_END ? 'end'
+                   : generated ? 'gen' : 'play');
+      menu.classList.toggle('hidden', !onTitle);
+      gameFooter.classList.toggle('hidden', onTitle);
+      menuFooter.classList.toggle('hidden', !onTitle);
+      // Off the menu, keep the focus off the buttons, so Space or Enter in the
+      // game does not press "Main menu" again.
+      if (onTitle) selectMenu(menuIndex);
+      else canvas.focus();
+    },
     print: (...a) => console.log(...a),
     printErr: (...a) => console.warn(...a),
     setStatus: (text) => {

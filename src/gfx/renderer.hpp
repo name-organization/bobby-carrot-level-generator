@@ -38,6 +38,8 @@ public:
     void drawGame(const Game& game, int frameTick);
     void drawTitle(int frameTick);
     void drawLevelSelect(Mode mode, int selected, int unlocked);
+    // Level under a point on the level select screen, or -1 if none.
+    int levelAt(Mode mode, int x, int y) const;
     void drawClearedBanner(int frameTick);
     void drawEndScreen();
     void drawTouchArrows(float alpha);

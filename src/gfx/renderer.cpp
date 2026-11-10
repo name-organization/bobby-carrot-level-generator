@@ -216,13 +216,34 @@ void Renderer::drawTitle(int frameTick) {
     }
 }
 
+// Level select grid: shared by the drawing and the mouse hit test.
+namespace {
+constexpr int kSelectCols = 6;
+constexpr int kSelectCellW = 44, kSelectCellH = 40;
+constexpr int kSelectOriginY = 90;
+}  // namespace
+
+int Renderer::levelAt(Mode mode, int x, int y) const {
+    const int originX = (logicalWidth() - kSelectCols * kSelectCellW) / 2;
+    // Each cell is centred on its two-digit number, so the cells tile the
+    // grid with no gaps between them.
+    const int left = originX + kGlyphW - kSelectCellW / 2;
+    const int top = kSelectOriginY + kGlyphH / 2 - kSelectCellH / 2;
+    if (x < left || y < top) return -1;
+    const int col = (x - left) / kSelectCellW;
+    const int row = (y - top) / kSelectCellH;
+    if (col >= kSelectCols) return -1;
+    const int index = row * kSelectCols + col;
+    return index < Level::levelCount(mode) ? index : -1;
+}
+
 void Renderer::drawLevelSelect(Mode mode, int selected, int unlocked) {
     const int count = Level::levelCount(mode);
-    const int cols = 6;
-    const int cellW = 44, cellH = 40;
+    const int cols = kSelectCols;
+    const int cellW = kSelectCellW, cellH = kSelectCellH;
     const int gridW = cols * cellW;
     const int originX = (logicalWidth() - gridW) / 2;
-    const int originY = 90;
+    const int originY = kSelectOriginY;
 
     const Texture& hud = tex_.get("hud");
     SDL_Rect iconSrc{mode == Mode::Normal ? 0 : 46, 0, mode == Mode::Normal ? 46 : 34, 44};
