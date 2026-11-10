@@ -1,9 +1,13 @@
-// Tile identifiers of the original Bobby Carrot .blm format.
+// Tile identifiers of the original Bobby Carrot levels.
 //
-// A single byte in a level file is BOTH the tile index inside tileset.png
-// (srcX = id % 8 * 32, srcY = id / 8 * 32) and the gameplay semantics of the
-// cell. There is no separate lookup table in the original data -- the mapping
-// below was recovered by reverse engineering the J2ME mid-let.
+// A tile id is BOTH the index inside tileset.png (srcX = id % 8 * 32,
+// srcY = id / 8 * 32) and the gameplay semantics of the cell. There is no
+// separate lookup table in the original data -- the mapping below was recovered
+// by reverse engineering the J2ME mid-let.
+//
+// The ids survived the move from the original binary .blm container to the text
+// format, because they are what the renderer indexes the tileset with. See
+// tilechars.hpp for the character each one is written as.
 #pragma once
 
 #include <cstdint>

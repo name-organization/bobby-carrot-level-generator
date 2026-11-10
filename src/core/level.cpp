@@ -1,23 +1,31 @@
 #include "level.hpp"
 
 #include <cstdio>
+#include <string>
 #include <vector>
 
+#include "tilechar.hpp"
 #include "tiles.hpp"
 
 namespace bc {
+namespace {
 
-bool Level::loadFromMemory(const std::uint8_t* data, std::size_t size) {
-    if (!data || size < kFileSize) return false;
+void fail(std::string* error, const std::string& message) {
+    if (error) *error = message;
+}
 
-    const std::uint32_t payload = (std::uint32_t(data[0]) << 24) |
-                                  (std::uint32_t(data[1]) << 16) |
-                                  (std::uint32_t(data[2]) << 8) |
-                                   std::uint32_t(data[3]);
-    if (payload != Grid::kCells) return false;
+// Only CR goes: trailing spaces are ground, so they carry meaning now. They are
+// still allowed to go missing -- a short row is padded out below -- because
+// plenty of editors strip trailing whitespace on save and a row of path would
+// otherwise come back truncated.
+std::string_view trimCarriageReturn(std::string_view line) {
+    while (!line.empty() && line.back() == '\r') line.remove_suffix(1);
+    return line;
+}
 
-    for (int i = 0; i < Grid::kCells; ++i) grid.cells[i] = data[kHeaderSize + i];
+}  // namespace
 
+void Level::rescan() {
     carrotTotal = 0;
     eggTotal    = 0;
     start       = Coord{0, 0};
@@ -32,23 +40,144 @@ bool Level::loadFromMemory(const std::uint8_t* data, std::size_t size) {
             default: break;
         }
     }
+}
+
+bool Level::loadFromText(std::string_view text, std::string* error) {
+    Grid parsed{};
+    int row = 0;
+    int lineNo = 0;
+    std::string title;
+
+    // Split first. A file that ends with a newline must not yield a phantom
+    // empty line after the last row: now that a blank line means a row of
+    // path, that phantom would pad a 15-row file out to a valid-looking 16 and
+    // hide the missing row.
+    std::vector<std::string_view> lines;
+    for (std::size_t pos = 0; pos <= text.size();) {
+        const std::size_t eol = text.find('\n', pos);
+        if (eol == std::string_view::npos) {
+            if (pos < text.size()) lines.push_back(text.substr(pos));
+            break;
+        }
+        lines.push_back(text.substr(pos, eol - pos));
+        pos = eol + 1;
+    }
+
+    for (std::string_view raw : lines) {
+        if (row >= Grid::H) break;
+        ++lineNo;
+        std::string_view line = trimCarriageReturn(raw);
+
+        if (!line.empty() && line.front() == kCommentChar) {
+            if (title.empty()) {
+                std::string_view rest = line.substr(1);
+                while (!rest.empty() && rest.front() == ' ') rest.remove_prefix(1);
+                while (!rest.empty() && (rest.back() == ' ' || rest.back() == '\t')) {
+                    rest.remove_suffix(1);
+                }
+                title.assign(rest);
+            }
+            continue;
+        }
+
+        // Every remaining line is a row, blank ones included: with path written
+        // as a space, a row of open ground looks exactly like an empty line, so
+        // skipping blanks would quietly delete it.
+        if (line.size() > Grid::W) {
+            char buf[160];
+            std::snprintf(buf, sizeof(buf), "line %d: expected at most %d characters, got %d",
+                          lineNo, Grid::W, static_cast<int>(line.size()));
+            fail(error, buf);
+            return false;
+        }
+
+        // A short row is the rest of it being path.
+        for (int x = static_cast<int>(line.size()); x < Grid::W; ++x) {
+            parsed.cells[row * Grid::W + x] = T_GROUND;
+        }
+
+        for (int x = 0; x < static_cast<int>(line.size()); ++x) {
+            const int tile = charToTile(line[x]);
+            if (tile < 0) {
+                char buf[160];
+                std::snprintf(buf, sizeof(buf),
+                              "line %d, column %d: unknown character '%c'", lineNo,
+                              x + 1, line[x]);
+                fail(error, buf);
+                return false;
+            }
+            parsed.cells[row * Grid::W + x] = static_cast<std::uint8_t>(tile);
+        }
+        ++row;
+    }
+
+    if (row != Grid::H) {
+        char buf[160];
+        std::snprintf(buf, sizeof(buf), "expected %d rows, got %d", Grid::H, row);
+        fail(error, buf);
+        return false;
+    }
+
+    grid = parsed;
+    name = std::move(title);
+    rescan();
     return true;
 }
 
-bool Level::loadFromFile(const std::string& path) {
+bool Level::loadFromFile(const std::string& path, std::string* error) {
     std::FILE* f = std::fopen(path.c_str(), "rb");
-    if (!f) return false;
+    if (!f) {
+        fail(error, path + ": cannot open");
+        return false;
+    }
 
-    std::vector<std::uint8_t> buf(kFileSize);
-    const std::size_t got = std::fread(buf.data(), 1, kFileSize, f);
+    std::string text;
+    char buf[4096];
+    while (const std::size_t n = std::fread(buf, 1, sizeof(buf), f)) {
+        text.append(buf, n);
+    }
     std::fclose(f);
 
-    return got == kFileSize && loadFromMemory(buf.data(), got);
+    std::string inner;
+    if (!loadFromText(text, &inner)) {
+        fail(error, path + ": " + inner);
+        return false;
+    }
+    return true;
+}
+
+std::string Level::toText(std::string_view title) const {
+    std::string out;
+    out.reserve(Grid::kCells + Grid::H + title.size() + 8);
+
+    if (!title.empty()) {
+        out += kCommentChar;
+        out += ' ';
+        out.append(title);
+        out += '\n';
+    }
+
+    for (int y = 0; y < Grid::H; ++y) {
+        for (int x = 0; x < Grid::W; ++x) {
+            out += tileToChar(grid.at(x, y));
+        }
+        out += '\n';
+    }
+    return out;
+}
+
+bool Level::saveToFile(const std::string& path, std::string_view title) const {
+    const std::string text = toText(title);
+    std::FILE* f = std::fopen(path.c_str(), "wb");
+    if (!f) return false;
+    const std::size_t written = std::fwrite(text.data(), 1, text.size(), f);
+    std::fclose(f);
+    return written == text.size();
 }
 
 std::string Level::pathFor(Mode mode, int index, const std::string& root) {
     char name[64];
-    std::snprintf(name, sizeof(name), "%s/level/%s%02d.blm", root.c_str(),
+    std::snprintf(name, sizeof(name), "%s/level/%s%02d.lvl", root.c_str(),
                   mode == Mode::Normal ? "normal" : "egg", index + 1);
     return std::string(name);
 }

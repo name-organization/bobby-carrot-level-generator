@@ -27,7 +27,12 @@ mkdir -p "$DEST/image" "$DEST/level" "$DEST/audio"
 
 # Sprites, tilesets and the 50 original levels.
 cp "$WORK/zig/zig-jok/assets/v1/image/"*.png "$DEST/image/"
+
+# The reference repositories ship the original binary .blm levels; this project
+# reads the text format, so convert them on the way in. The character table is
+# taken from src/core/tilechars.hpp, so the two cannot drift apart.
 cp "$WORK/zig/zig-jok/assets/v1/level/"*.blm "$DEST/level/"
+"$(dirname "$0")/blm2lvl.py" "$DEST/level" --verify
 
 # Title, logo and ending artwork only exist in the unpacked mid-let.
 cp "$WORK/jar/Extr/logo.png" "$WORK/jar/Extr/title.png" "$WORK/jar/Extr/end.png" "$DEST/image/"
@@ -40,10 +45,10 @@ cp "$WORK/jar/musiques/"*.ogg "$DEST/audio/"
 echo "==> done"
 printf '    images: %s\n    levels: %s\n    audio:  %s\n' \
     "$(ls "$DEST/image" | wc -l)" \
-    "$(ls "$DEST/level" | wc -l)" \
+    "$(ls "$DEST/level"/*.lvl | wc -l)" \
     "$(ls "$DEST/audio" | wc -l)"
 
-if [ "$(ls "$DEST/level" | wc -l)" -ne 50 ]; then
+if [ "$(ls "$DEST/level"/*.lvl | wc -l)" -ne 50 ]; then
     echo "WARNING: expected 50 level files" >&2
     exit 1
 fi

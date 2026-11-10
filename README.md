@@ -9,3 +9,4 @@ $ make run
 This downloads assets (images, sound, etc.) and SDL2 library. Then Docker builds an image and runs it.
 Game available at `localhost:8080`
 
+### TODO: add `.lvl` format specification
