@@ -258,6 +258,7 @@ void App::handleEvent(const SDL_Event& e) {
                 case SDLK_RETURN: case SDLK_SPACE: case SDLK_KP_ENTER: onConfirm(); break;
                 case SDLK_ESCAPE: case SDLK_BACKSPACE: onBack(); break;
                 case SDLK_r: if (screen_ == Screen::Play) game_.restart(); break;
+                case SDLK_h: if (screen_ == Screen::Play) game_.toggleHint(); break;
                 case SDLK_f: gfx_.toggleViewMode(); applyLayout(); break;
                 case SDLK_m: mixer_.toggleMuted(); save_.muted = mixer_.muted(); saveProgress(save_); break;
                 case SDLK_n:

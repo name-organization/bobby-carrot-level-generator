@@ -1,5 +1,7 @@
 #include "renderer.hpp"
 
+#include "hint_overlay.hpp"  // HINT OVERLAY (temporary)
+
 #include <algorithm>
 #include <cmath>
 
@@ -193,6 +195,7 @@ void Renderer::drawHud(const Game& game) {
 void Renderer::drawGame(const Game& game, int frameTick) {
     updateCamera(game);
     drawTiles(game, frameTick);
+    drawHintOverlay(r_, game, camX_, camY_);  // HINT OVERLAY (temporary)
     drawPlayer(game);
     drawHud(game);
 }
