@@ -70,6 +70,7 @@ if(EMSCRIPTEN)
         -sFILESYSTEM=1
         -sENVIRONMENT=web
         -sEXIT_RUNTIME=0
+        -lembind
         --preload-file "${CMAKE_SOURCE_DIR}/assets/v1@/assets/v1"
         --shell-file "${CMAKE_SOURCE_DIR}/web/shell.html"
     )

@@ -10,6 +10,8 @@
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
+#include <emscripten/console.h>
+#include <emscripten/val.h> 
 #else
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "../third_party/stb_image_write.h"
@@ -69,6 +71,17 @@ int main(int argc, char** argv) {
     bool handheld = false;
     std::string startLevelB64;
 
+    #ifdef __EMSCRIPTEN__
+        {
+            emscripten::val module = emscripten::val::global("Module");
+            emscripten::val level  = module["__levelB64"];
+            if (!level.isUndefined() && !level.isNull()) {
+                startLevelB64 = level.as<std::string>();
+            }
+            emscripten_console_log(("startLevelB64 len=" + std::to_string(startLevelB64.size())).c_str());
+        }
+    #endif
+
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--handheld") == 0) handheld = true;
     }
@@ -93,6 +106,12 @@ int main(int argc, char** argv) {
 
     if (!g_app.init(assetRoot, /*headless=*/false)) return 1;
     if (handheld) g_app.setViewMode(bc::gfx::ViewMode::Handheld);
+
+    #ifdef __EMSCRIPTEN__
+        emscripten_console_log("bobik");
+        emscripten_console_log(startLevelB64.c_str());
+        emscripten_console_log("sysel");
+    #endif
 
     // If shell.html forwarded ?level=<base64url> jump into that level
     if (!startLevelB64.empty()) {

@@ -71,12 +71,11 @@
   var Module = {
     canvas: canvas,
     preRun: [() => {
-      // Read ?level=<base64url> from the URL and forward it to main(argc, argv) as --level=<base64url>
       try {
         const params = new URLSearchParams(window.location.search);
         const level = params.get('level');
         if (level) {
-          Module.arguments = (Module.arguments || []).concat([`--level=${level}`]);
+          Module.__levelB64 = level;
           console.log('[bobby] start with level payload, len=' + level.length);
         }
       } catch (e) {
