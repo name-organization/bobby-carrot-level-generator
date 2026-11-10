@@ -48,7 +48,7 @@ RUN if [ -n "$(ls -A assets/v1/level 2>/dev/null)" ]; then \
         echo "assets: not in the build context, fetching"; \
         tools/fetch_assets.sh; \
     fi \
- && test "$(ls assets/v1/level/*.blm | wc -l)" -eq 50
+ && test "$(ls assets/v1/level/*.lvl | wc -l)" -eq 50
 
 # cmake is invoked directly rather than through `make web`: sourcing the emsdk
 # environment puts a directory literally named "cmake" on PATH, which trips up

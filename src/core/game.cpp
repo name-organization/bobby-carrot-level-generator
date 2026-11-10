@@ -1,11 +1,20 @@
 #include "game.hpp"
 
+#include <cstdio>
+
 namespace bc {
 
 bool Game::load(Mode mode, int index) {
     if (index < 0 || index >= Level::levelCount(mode)) return false;
+
     Level next;
-    if (!next.loadFromFile(Level::pathFor(mode, index, root_))) return false;
+    std::string error;
+    if (!next.loadFromFile(Level::pathFor(mode, index, root_), &error)) {
+        // A text format can say exactly what is wrong and where, which the
+        // binary one never could -- so pass it on instead of a bare false.
+        std::fprintf(stderr, "[level] %s\n", error.c_str());
+        return false;
+    }
 
     level_ = next;
     mode_  = mode;
