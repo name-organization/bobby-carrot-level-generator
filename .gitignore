@@ -2,3 +2,4 @@ assets/*
 sdl-release*.zip
 .venv/
 __pycache__/
+build-hint/

@@ -98,9 +98,15 @@ else()
     add_executable(solve_levels tests/solve_levels.cpp ${CORE_SOURCES})
     target_link_libraries(solve_levels PRIVATE cadical)
 
+    # Hint through the real Game class: follow it to the exit on levels 1-7.
+    add_executable(hint_game tests/hint_game.cpp ${CORE_SOURCES})
+    target_link_libraries(hint_game PRIVATE cadical)
+
     enable_testing()
     add_test(NAME levels_solvable
              COMMAND solve_levels "${CMAKE_SOURCE_DIR}/assets/v1" 8000000)
+    add_test(NAME hint_in_game
+             COMMAND hint_game "${CMAKE_SOURCE_DIR}/assets/v1")
 endif()
 
 target_compile_options(bobby PRIVATE -Wall -Wextra -Wno-unused-parameter)
