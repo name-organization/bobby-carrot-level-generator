@@ -6,15 +6,12 @@ SDL = docker/sdl-release-2.32.10.zip
 
 all: run
 
-# dependency: game assets (images, audio, default levels)
-$(ASSETS_DIR):
-	tools/fetch_assets.sh
-
 # dependency: library
 $(SDL):
 	wget -O docker/sdl-release-2.32.10.zip https://github.com/libsdl-org/SDL/archive/release-2.32.10.zip
 
 build-image: $(ASSETS_DIR) $(SDL)
+	tools/fetch_assets.sh
 	docker compose build bobby
 
 run: build-image
