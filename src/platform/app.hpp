@@ -72,6 +72,7 @@ private:
     std::string assetRoot_ = "assets/v1";
     Screen screen_ = Screen::Title;
     int reportedScreen_ = -1;  // last screen told to the web page
+    bool reportedGenerated_ = false;
     Mode mode_ = Mode::Normal;
     int selected_ = 0;
     int frameTick_ = 0;

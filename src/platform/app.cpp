@@ -162,13 +162,16 @@ void App::goToMainMenu() {
 }
 
 // The start page and the footer live in web/shell.html; it shows the menu
-// while the game is on the title screen, so it needs to know the screen.
+// while the game is on the title screen and picks the key hints for the
+// screen, so it needs to know the screen and whether the level is generated.
 void App::reportScreen() {
     const int current = static_cast<int>(screen_);
-    if (current == reportedScreen_) return;
+    const bool generated = game_.levelIndex() < 0;
+    if (current == reportedScreen_ && generated == reportedGenerated_) return;
     reportedScreen_ = current;
+    reportedGenerated_ = generated;
 #ifdef __EMSCRIPTEN__
-    EM_ASM({ if (Module.onScreenChange) Module.onScreenChange($0); }, current);
+    EM_ASM({ if (Module.onScreenChange) Module.onScreenChange($0, !!$1); }, current, generated);
 #endif
 }
 
@@ -323,6 +326,10 @@ void App::onKey(SDL_Keycode key) {
                 startLevel(mode_, game_.levelIndex() - 1);
             break;
         case SDLK_t:
+            // A generated level has no carrot/egg counterpart to switch to.
+            if ((screen_ == Screen::Play || screen_ == Screen::Cleared) &&
+                game_.levelIndex() < 0)
+                break;
             mode_ = mode_ == Mode::Normal ? Mode::Egg : Mode::Normal;
             selected_ = 0;
             if (screen_ == Screen::Play) startLevel(mode_, 0);

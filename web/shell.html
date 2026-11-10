@@ -40,8 +40,10 @@
     .key:active { transform: translateY(1px); border-bottom-width: 1px; }
     @media (max-width: 640px) { footer .desktop-only { display: none; } }
     @media (min-width: 641px) { footer .mobile-only { display: none; } }
-    /* A key and its label wrap to the next line together. */
-    footer span span, #game-controls > span { white-space: nowrap; }
+    /* Key hints under the game, one group per row. A key and its label wrap
+       to the next line together. */
+    footer .row { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 18px; }
+    footer .row > span { white-space: nowrap; }
 
     /* Start page: covers the canvas while the game is on its title screen. */
     #menu {
@@ -59,7 +61,6 @@
     .btn:hover, .btn:focus-visible, .btn.selected { background: #33402a; border-color: #c7792f; outline: none; }
     #menu .btn:not(.selected) { background: #263020; border-color: #36422c; }
     .btn:active { transform: translateY(1px); border-bottom-width: 2px; }
-    #game-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px 16px; }
     .hidden { display: none !important; }
   </style>
 </head>
@@ -89,20 +90,28 @@
 
 <footer id="game-footer" class="hidden">
   <!-- data-key is the SDL keycode the label stands for: the letter's code,
-       27 = Esc, 1073741903..1073741906 = Right, Left, Down, Up. -->
-  <div id="game-controls">
-    <span><button class="key" type="button" tabindex="-1" data-key="104">H</button> show hint</span>
-    <span><button class="key" type="button" tabindex="-1" data-key="103">G</button> generate level</span>
-    <span><button class="key" type="button" tabindex="-1" data-key="113">Q</button> main menu</span>
+       13 = Enter, 27 = Esc, 1073741903..1073741906 = Right, Left, Down, Up.
+       data-show lists the screens an item is shown on: play (built-in level),
+       gen (generated level), select (level select), end (ending). -->
+  <div class="row">
+    <span data-show="play gen"><button class="key" type="button" tabindex="-1" data-key="104">H</button> show hint</span>
+    <span data-show="play gen"><button class="key" type="button" tabindex="-1" data-key="114">R</button> restart</span>
+    <span data-show="play gen"><button class="key" type="button" tabindex="-1" data-key="103">G</button> generate level</span>
+    <span data-show="select"><button class="key" type="button" tabindex="-1" data-key="1073741906">↑</button><button class="key" type="button" tabindex="-1" data-key="1073741905">↓</button><button class="key" type="button" tabindex="-1" data-key="1073741904">←</button><button class="key" type="button" tabindex="-1" data-key="1073741903">→</button> choose</span>
+    <span data-show="select"><button class="key" type="button" tabindex="-1" data-key="13">Enter</button> play</span>
+    <span data-show="end"><button class="key" type="button" tabindex="-1" data-key="13">Enter</button> continue</span>
+    <span data-show="play select"><button class="key" type="button" tabindex="-1" data-key="116">T</button> carrot/egg mode</span>
   </div>
-  <span class="desktop-only">
-    <span><button class="key" type="button" tabindex="-1" data-key="1073741906">↑</button><button class="key" type="button" tabindex="-1" data-key="1073741905">↓</button><button class="key" type="button" tabindex="-1" data-key="1073741904">←</button><button class="key" type="button" tabindex="-1" data-key="1073741903">→</button> move</span> ·
-    <span><button class="key" type="button" tabindex="-1" data-key="114">R</button> restart</span> ·
-    <span><button class="key" type="button" tabindex="-1" data-key="102">F</button> view</span> ·
-    <span><button class="key" type="button" tabindex="-1" data-key="116">T</button> carrot/egg mode</span> ·
-    <span><button class="key" type="button" tabindex="-1" data-key="109">M</button> mute</span> ·
-    <span><button class="key" type="button" tabindex="-1" data-key="27">Esc</button> levels</span>
-  </span>
+  <div class="row">
+    <span data-show="play gen"><button class="key" type="button" tabindex="-1" data-key="1073741906">↑</button><button class="key" type="button" tabindex="-1" data-key="1073741905">↓</button><button class="key" type="button" tabindex="-1" data-key="1073741904">←</button><button class="key" type="button" tabindex="-1" data-key="1073741903">→</button> move</span>
+    <span data-show="play gen"><button class="key" type="button" tabindex="-1" data-key="27">Esc</button> level list</span>
+    <span data-show="select"><button class="key" type="button" tabindex="-1" data-key="103">G</button> generate level</span>
+    <span data-show="play gen select end"><button class="key" type="button" tabindex="-1" data-key="113">Q</button> main menu</span>
+  </div>
+  <div class="row">
+    <span data-show="play gen select end"><button class="key" type="button" tabindex="-1" data-key="102">F</button> view</span>
+    <span data-show="play gen select end"><button class="key" type="button" tabindex="-1" data-key="109">M</button> mute</span>
+  </div>
   <span class="mobile-only">swipe to move, tap the arrows, tap to confirm</span>
 </footer>
 
@@ -131,6 +140,15 @@
 
   // Screen numbers match App::Screen in src/platform/app.hpp.
   const SCREEN_TITLE = 0;
+  const SCREEN_SELECT = 1;
+  const SCREEN_END = 4;
+
+  // Only the key hints that work on the current screen are shown.
+  function showHintsFor(screen) {
+    document.querySelectorAll('#game-footer [data-show]').forEach((item) => {
+      item.classList.toggle('hidden', !item.dataset.show.split(' ').includes(screen));
+    });
+  }
 
   // While the start page is up, keys drive its buttons and do not reach the
   // game: Up/Down choose, Enter or Space confirm. G still generates a level
@@ -184,9 +202,13 @@
     canvas: canvas,
     preRun: [],
     postRun: [() => { loader.classList.add('hidden'); canvas.focus(); }],
-    // Called by App::reportScreen() whenever the game changes screen.
-    onScreenChange: (screen) => {
+    // Called by App::reportScreen() whenever the game changes screen, or a
+    // generated level replaces a built-in one or the other way round.
+    onScreenChange: (screen, generated) => {
       const onTitle = screen === SCREEN_TITLE;
+      showHintsFor(screen === SCREEN_SELECT ? 'select'
+                   : screen === SCREEN_END ? 'end'
+                   : generated ? 'gen' : 'play');
       menu.classList.toggle('hidden', !onTitle);
       gameFooter.classList.toggle('hidden', onTitle);
       menuFooter.classList.toggle('hidden', !onTitle);
