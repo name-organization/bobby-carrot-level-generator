@@ -14,12 +14,27 @@ set(CORE_SOURCES
     src/core/rules.cpp
     src/core/player.cpp
     src/core/game.cpp
+    src/core/sat.cpp
+    src/core/hint.cpp
 )
+
+# CaDiCaL SAT solver, used by the hint (src/core/sat.cpp). Built from its
+# sources without its own configure script: NBUILD makes it guess the build
+# info, and the other switches drop logging, tracing and the fork-based file
+# helpers that the browser has no use for. Same flags as tools/build_hint_tests.sh.
+file(GLOB CADICAL_SOURCES CONFIGURE_DEPENDS
+     src/third_party/cadical/*.cpp src/third_party/cadical/*.c)
+add_library(cadical STATIC ${CADICAL_SOURCES})
+target_compile_definitions(cadical PRIVATE
+    NDEBUG NBUILD QUIET NTRACING NCONTRACTS NCLOSEFROM)
+target_compile_options(cadical PRIVATE -O2 -w)
+set_target_properties(cadical PROPERTIES CXX_STANDARD 17)
 
 set(GAME_SOURCES
     ${CORE_SOURCES}
     src/gfx/texture.cpp
     src/gfx/renderer.cpp
+    src/gfx/hint_overlay.cpp  # HINT OVERLAY (temporary), see src/gfx/hint_overlay.hpp
     src/audio/audio.cpp
     src/platform/storage.cpp
     src/platform/app.cpp
@@ -28,6 +43,7 @@ set(GAME_SOURCES
 )
 
 add_executable(bobby ${GAME_SOURCES})
+target_link_libraries(bobby PRIVATE cadical)
 
 # stb_vorbis is third-party C that warns a lot; keep our own warnings loud.
 set_source_files_properties(src/third_party/stb_vorbis_impl.c
@@ -80,10 +96,17 @@ else()
     # under the reconstructed tile semantics. Native only -- it is a test, not
     # something to ship to the browser.
     add_executable(solve_levels tests/solve_levels.cpp ${CORE_SOURCES})
+    target_link_libraries(solve_levels PRIVATE cadical)
+
+    # Hint through the real Game class: follow it to the exit on levels 1-7.
+    add_executable(hint_game tests/hint_game.cpp ${CORE_SOURCES})
+    target_link_libraries(hint_game PRIVATE cadical)
 
     enable_testing()
     add_test(NAME levels_solvable
              COMMAND solve_levels "${CMAKE_SOURCE_DIR}/assets/v1" 8000000)
+    add_test(NAME hint_in_game
+             COMMAND hint_game "${CMAKE_SOURCE_DIR}/assets/v1")
 endif()
 
 target_compile_options(bobby PRIVATE -Wall -Wextra -Wno-unused-parameter)
