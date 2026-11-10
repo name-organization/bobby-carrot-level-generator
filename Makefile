@@ -1,5 +1,6 @@
 PORT  ?= 8080
 ASSETS_DIR = assets/v1
+IMAGE = bobby
 SDL = docker/sdl-release-2.32.10.zip
 
 .PHONY: all run build-image
@@ -15,7 +16,7 @@ $(SDL):
 	wget -O docker/sdl-release-2.32.10.zip https://github.com/libsdl-org/SDL/archive/release-2.32.10.zip
 
 build-image: $(ASSETS_DIR) $(SDL)
-	docker compose build bobby
+	docker compose build $(IMAGE)
 
 run: build-image
 	docker compose up

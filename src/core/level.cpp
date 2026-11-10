@@ -6,6 +6,7 @@
 
 #include "tilechar.hpp"
 #include "tiles.hpp"
+#include "base64.h"
 
 namespace bc {
 namespace {
@@ -181,5 +182,21 @@ std::string Level::pathFor(Mode mode, int index, const std::string& root) {
                   mode == Mode::Normal ? "normal" : "egg", index + 1);
     return std::string(name);
 }
+
+std::string Level::encode() const {
+    std::string flattenGrid;
+    flattenGrid.reserve(grid.cells.size());
+
+    for (auto cell : grid.cells) {
+        flattenGrid += static_cast<char>(cell);
+    }
+
+    return base64_encode(flattenGrid);
+}
+
+//void Level::decode(const std::string& base64Str) {
+//    std::string decoded = base64_decode(base64Str);
+//    ...
+//}
 
 }  // namespace bc

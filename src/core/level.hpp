@@ -57,6 +57,10 @@ struct Level {
 
     static std::string pathFor(Mode mode, int index, const std::string& root = "assets/v1");
     static int levelCount(Mode mode) { return mode == Mode::Normal ? 30 : 20; }
+
+    // base64 encoding/decoding of level grid
+    std::string encode() const;
+    //void decode(const std::string& base64Str);
 };
 
 }  // namespace bc
