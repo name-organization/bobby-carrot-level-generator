@@ -32,6 +32,11 @@ public:
     // it has to go through the app rather than straight to the renderer.
     void setViewMode(gfx::ViewMode m);
 
+    // Actions behind the web page's buttons (and the G key).
+    void generateLevel();
+    void openLevelSelect();
+    void goToMainMenu();
+
     // Test hooks used by the screenshot tool.
     void forceLevel(Mode mode, int index);
     void tick() { stepLogic(); }
@@ -50,6 +55,7 @@ private:
     void applyLayout();
     void playEventSounds(unsigned events);
     void rememberProgress();
+    void reportScreen();
 
     SDL_Window* window_ = nullptr;
     SDL_Renderer* renderer_ = nullptr;
@@ -60,6 +66,7 @@ private:
 
     std::string assetRoot_ = "assets/v1";
     Screen screen_ = Screen::Title;
+    int reportedScreen_ = -1;  // last screen told to the web page
     Mode mode_ = Mode::Normal;
     int selected_ = 0;
     int frameTick_ = 0;

@@ -4,6 +4,10 @@
 #include <cmath>
 #include <cstdio>
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
+
 namespace bc::platform {
 namespace {
 
@@ -130,6 +134,44 @@ void App::startLevel(Mode mode, int index) {
     mixer_.stopMusic();
 }
 
+void App::generateLevel() {
+    if (!game_.loadProcedural(0)) {  // 0 picks a random seed
+        std::fprintf(stderr, "cannot generate a level\n");
+        return;
+    }
+    screen_ = Screen::Play;
+    held_ = Dir::None;
+    pendingTap_ = Dir::None;
+    mixer_.stopMusic();
+}
+
+void App::openLevelSelect() {
+    screen_ = Screen::Select;
+    selected_ = 0;
+    held_ = Dir::None;
+    pendingTap_ = Dir::None;
+}
+
+void App::goToMainMenu() {
+    if (screen_ == Screen::Title) return;
+    screen_ = Screen::Title;
+    held_ = Dir::None;
+    pendingTap_ = Dir::None;
+    clearedTimer_ = 0;
+    mixer_.playMusic("title", 0.5f);
+}
+
+// The start page and the footer live in web/shell.html; it shows the menu
+// while the game is on the title screen, so it needs to know the screen.
+void App::reportScreen() {
+    const int current = static_cast<int>(screen_);
+    if (current == reportedScreen_) return;
+    reportedScreen_ = current;
+#ifdef __EMSCRIPTEN__
+    EM_ASM({ if (Module.onScreenChange) Module.onScreenChange($0); }, current);
+#endif
+}
+
 void App::rememberProgress() {
     const int slot = (mode_ == Mode::Normal ? 0 : 30) + game_.levelIndex();
     if (slot >= 0 && slot < 50) {
@@ -198,8 +240,7 @@ void App::onDirection(Dir d, bool pressed) {
 void App::onConfirm() {
     switch (screen_) {
         case Screen::Title:
-            screen_ = Screen::Select;
-            selected_ = 0;
+            openLevelSelect();
             break;
         case Screen::Select: {
             const int unlocked = mode_ == Mode::Normal ? save_.unlockedNormal : save_.unlockedEgg;
@@ -275,15 +316,7 @@ void App::handleEvent(const SDL_Event& e) {
                     selected_ = 0;
                     if (screen_ == Screen::Play) startLevel(mode_, 0);
                     break;
-                case SDLK_g:
-                    if (screen_ == Screen::Play || screen_ == Screen::Select) {
-                        game_.loadProcedural(0); // 0 — случайный сид
-                        screen_ = Screen::Play;
-                        held_ = Dir::None;
-                        pendingTap_ = Dir::None;
-                        mixer_.stopMusic();
-                    }
-                    break;
+                case SDLK_g: generateLevel(); break;
                 default: break;
             }
             return;
@@ -453,6 +486,7 @@ void App::frame() {
     }
 
     render();
+    reportScreen();
 }
 
 }  // namespace bc::platform

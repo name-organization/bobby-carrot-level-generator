@@ -64,6 +64,15 @@ int screenshot(const std::string& assetRoot, bc::Mode mode, int level, int warmu
 
 }  // namespace
 
+#ifdef __EMSCRIPTEN__
+// Called from the buttons in web/shell.html as Module._bc_generate_level() etc.
+extern "C" {
+EMSCRIPTEN_KEEPALIVE void bc_generate_level() { g_app.generateLevel(); }
+EMSCRIPTEN_KEEPALIVE void bc_select_level()   { g_app.openLevelSelect(); }
+EMSCRIPTEN_KEEPALIVE void bc_main_menu()      { g_app.goToMainMenu(); }
+}
+#endif
+
 int main(int argc, char** argv) {
     std::string assetRoot = "assets/v1";
     bool handheld = false;
