@@ -5,22 +5,25 @@
 //   1. Layout   a random self-avoiding path over the slots from the start room
 //               to the exit room, plus side rooms hanging off it (dead ends).
 //               Unused slots stay hedge, which gives the island its outline.
-//   2. Doors    every room is joined to the one it was reached from. A door on
-//               the start-exit path may be spikes: it can be crossed once, and
-//               nothing behind it is ever needed again. Side rooms always get
-//               plain doors, since Bobby has to come back out.
+//   2. Doors    every room is joined to the one it was reached from, and more
+//               doors between neighbouring rooms close cycles, so that there is
+//               more than one way through. Any door may be spikes: crossed once,
+//               it can cut Bobby off from what lies behind it if he picks the
+//               wrong moment -- the solver makes sure some order still wins.
 //   3. Content  wave function collapse over 3x3 patterns of the originals
 //               (wfc.hpp), room by room together with its walls; or the fixed
 //               patterns (carrot fields, rows, pillars...) without a model.
 //   4. Autotile hedge and fence pieces from their neighbours (autotile.hpp).
 //   5. Verify   the hint solver must find a win. Its moves are the reference
-//               solution the game hands to the hint. If WFC spikes block the
-//               way, they are thinned out until the solver wins.
+//               solution the game hands to the hint. If the spikes leave no way
+//               to win, all are taken out and put back one at a time, doors
+//               first, each kept only if the solver still wins.
 //   6. Spikes   extra spikes up to a target, each one kept only if the solver
 //               still finds a win with it.
 //
-// The layout is winnable by construction (visit side rooms, then cross the
-// next door); step 5 is the safety net and is what makes "verified" a fact.
+// Without spikes the layout is winnable by construction (every room is
+// reachable and nothing closes); the spikes are what the solver checks, and
+// step 5 is what makes "verified" a fact.
 //
 // Everything works on a Canvas of any size. A canvas the engine can play (up
 // to Grid::kMaxW x Grid::kMaxH) is verified; a bigger one is only drawn.
@@ -55,7 +58,14 @@ struct Params {
     Walls walls  = Walls::Auto;
     double fill            = 0.75;  // share of the room slots the level uses (3 rooms at least)
     double mainShare       = 0.65;  // share of used rooms on the start-exit path
-    double spikeDoorChance = 0.5;   // per door on the start-exit path
+    // Per pair of neighbouring rooms the layout tree leaves apart: a door that
+    // closes a cycle, so that most rooms open into 2-4 others and there is
+    // more than one way through.
+    double loopChance      = 0.8;
+    // Per door, any door: laid as spikes. With cycles a spike door is a real
+    // choice -- cross it at the wrong time and something is cut off -- so the
+    // solver keeps only the spikes the level can still be won with.
+    double spikeDoorChance = 0.5;
     double mergeChance     = 0.15;  // plain door widened to the whole wall
     double insetChance     = 0.35;  // room shrunk by a cell on one side
     double emptyRoomChance = 0.25;  // path room without carrots (fixed patterns only)
@@ -102,13 +112,14 @@ struct Params {
     int wfcNodeBudget = 300;  // search nodes per run
 
     // Defaults for a map of the given size, measured with tests/gen_bench.cpp
-    // (100-500 levels each, carrots aimed at the originals' 27% of the
-    // walkable area):
+    // over 200 levels each (carrots aimed at the originals' 27% of the
+    // walkable area; "naive loses" is how often a player who always goes for
+    // the nearest carrot cuts himself off -- 59% on the originals 1-7):
     //
-    //   map      room  carrot weight  spikes  carrots  likeness  native time
-    //   16x16    4x4   700%            6      27%      52%        9 ms
-    //   24x24    5x5   320%           12      ~27%     ~51%      ~20 ms
-    //   32x32    6x6   300%           20      ~27%     ~43%      ~80 ms
+    //   map    room  carrot  spikes  doors/room  cycles  naive loses  likeness  native
+    //   16x16  4x4   700%     6      2.1         1.2     43%          49%        7 ms
+    //   24x24  5x5   320%    12      2.1         1.5     59%          51%       30 ms
+    //   32x32  6x6   300%    20      2.5         3.8     77%          45%       35 ms
     //
     // Bigger rooms for bigger maps keep the number of rooms sensible; their
     // price is likeness, since the originals' rooms are small (5x5 rooms on
@@ -121,9 +132,16 @@ struct Room {
     int sx = 0, sy = 0;                // slot on the room grid
     int x0 = 0, y0 = 0, x1 = 0, y1 = 0;  // interior, inclusive
     RoomKind kind = RoomKind::Main;
-    int parent = -1;                   // room it is entered from, -1 for the start
-    bool spikeDoor = false;            // the door from the parent is spikes
-    bool merged = false;               // the wall to the parent is gone
+    int parent = -1;                   // room it was reached from in the layout, -1 for the start
+};
+
+// A door between two neighbouring rooms.
+struct Door {
+    int a = 0, b = 0;          // the rooms; for a door of the layout tree, `a` is the parent
+    bool loop = false;         // not needed to reach every room: it closes a cycle
+    bool spike = false;        // has a spike in the finished level
+    bool merged = false;       // the whole wall between the rooms is gone
+    std::vector<Coord> cells;  // the cells through the wall
 };
 
 struct Result {
@@ -131,6 +149,7 @@ struct Result {
     Coord start{};
     Coord exit{};
     std::vector<Room> rooms;
+    std::vector<Door> doors;
     int slotsX = 0, slotsY = 0;
     Walls walls = Walls::Auto;  // the style actually used
     // Winning moves from the start. Filled only when `verified`.
@@ -140,7 +159,7 @@ struct Result {
     std::uint32_t seed = 0;
     int wfcRooms = 0;       // rooms filled by WFC
     int fallbackRooms = 0;  // rooms filled by the fixed patterns
-    bool spikesRepaired = false;  // WFC spikes had to be thinned out to win
+    bool spikesRepaired = false;  // spikes had to be thinned out to win
 };
 
 // Same seed and params give the same level on every platform.

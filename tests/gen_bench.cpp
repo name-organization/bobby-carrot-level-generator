@@ -12,7 +12,7 @@
 //                  the engine plays up to 32x32
 //   --room R       room interior, cells per side (4 on 16x16)
 //   --walls W      auto | fence | thin | hedge (auto)
-//   --fill F  --main F  --spikes F  --merge F  --inset F  --empty F
+//   --fill F  --main F  --spikes F  --loops F  --merge F  --inset F  --empty F
 //                  the chances in roomgen::Params
 //   --spike-target N   spikes a level should end up with (roomgen::Params::spikeTarget)
 //   --spike-unknown N  unknown 3x3 windows an added spike may cause (2)
@@ -50,6 +50,7 @@
 #include "../src/core/game.hpp"
 #include "../src/core/generator.hpp"
 #include "../src/core/hint.hpp"
+#include "../src/core/rng.hpp"
 #include "../src/core/roomgen.hpp"
 #include "../src/core/wfc.hpp"
 
@@ -106,6 +107,7 @@ Options parse(int argc, char** argv) {
         else if (a == "--fill") o.params.fill = number();
         else if (a == "--main") o.params.mainShare = number();
         else if (a == "--spikes") o.params.spikeDoorChance = number();
+        else if (a == "--loops") o.params.loopChance = number();
         else if (a == "--merge") o.params.mergeChance = number();
         else if (a == "--inset") o.params.insetChance = number();
         else if (a == "--empty") o.params.emptyRoomChance = number();
@@ -250,6 +252,82 @@ struct Stats {
     }
 };
 
+struct Graph {
+    Stat degree;      // doors per room
+    Stat cycles;      // doors closing a cycle, per level
+    Stat spikeDoors;  // share of doors with a spike, per level
+    int twoPlus = 0;  // rooms with two doors or more
+};
+
+// --- a naive player ------------------------------------------------------------
+
+// Walks to the nearest carrot left (to the exit once there are none), never
+// onto a hole, breaking ties at random and taking a random step one time in
+// five. It loses when nothing it needs can be reached any more -- a spike it
+// burnt cut it off. How often it loses says how much a level punishes the
+// obvious order; 0% means "grab the nearest carrot" always works.
+bool naiveWins(const Level& level, Rng& rng) {
+    Grid g = level.grid;
+    Coord pos = level.start;
+    int carrots = level.carrotTotal;
+    auto open = [&](Coord c) {
+        return g.inBounds(c.x, c.y) && g.at(c) >= T_FIRST_WALKABLE && g.at(c) != T_HOLE;
+    };
+    std::vector<Dir> dirs{Dir::Up, Dir::Down, Dir::Left, Dir::Right};
+    for (int step = 0; step < 4 * g.w * g.h; ++step) {
+        if (carrots == 0 && pos == level.exit) return true;
+        rng.shuffle(dirs);
+        // breadth-first from Bobby: the first step towards each cell
+        std::vector<int> dist(Grid::kCells, -1);
+        std::vector<Coord> first(Grid::kCells, pos);
+        std::vector<Coord> queue{pos};
+        dist[pos.index()] = 0;
+        Coord target{-1, -1};
+        for (std::size_t head = 0; head < queue.size() && target.x < 0; ++head) {
+            const Coord c = queue[head];
+            for (Dir d : dirs) {
+                const Coord n{c.x + dirDX(d), c.y + dirDY(d)};
+                if (!open(n) || dist[n.index()] != -1) continue;
+                dist[n.index()] = dist[c.index()] + 1;
+                first[n.index()] = c == pos ? n : first[c.index()];
+                queue.push_back(n);
+                const bool wanted = carrots > 0 ? g.at(n) == T_CARROT : n == level.exit;
+                if (wanted) {
+                    target = n;
+                    break;
+                }
+            }
+        }
+        if (target.x < 0) return false;  // cut off
+        Coord next = first[target.index()];
+        if (rng.chance(0.2)) {
+            for (Dir d : dirs) {
+                const Coord n{pos.x + dirDX(d), pos.y + dirDY(d)};
+                if (open(n)) {
+                    next = n;
+                    break;
+                }
+            }
+        }
+        if (g.at(pos) == T_CRACKED) g.at(pos) = T_HOLE;  // a spike fires once left
+        pos = next;
+        if (g.at(pos) == T_CARROT) {
+            g.at(pos) = T_CARROT_TAKEN;
+            --carrots;
+        }
+    }
+    return false;
+}
+
+constexpr int kNaiveTries = 20;
+
+double naiveLossRate(const Level& level, std::uint32_t seed) {
+    Rng rng(seed * 7919u + 1u);
+    int lost = 0;
+    for (int i = 0; i < kNaiveTries; ++i) lost += !naiveWins(level, rng);
+    return static_cast<double>(lost) / kNaiveTries;
+}
+
 // --- replay through the real Game ---------------------------------------------
 
 // Same as tests/hint_game.cpp: tick until Bobby stands still again.
@@ -325,6 +403,9 @@ int main(int argc, char** argv) {
     const bool playable = o.params.width <= Grid::kMaxW && o.params.height <= Grid::kMaxH;
     Stats generated;
     int verified = 0, won = 0, roundTrips = 0;
+    Graph graph;
+    Stat naiveLoses;  // per level: share of naive tries lost
+    int naiveNeverLoses = 0;
     int wfcRooms = 0, allRooms = 0, repaired = 0;
     double attempts = 0, totalMs = 0, moves = 0;
 
@@ -345,19 +426,31 @@ int main(int argc, char** argv) {
             wfcRooms += r.wfcRooms;
             allRooms += static_cast<int>(r.rooms.size());
             repaired += r.spikesRepaired;
-            int path = 0, spikeDoors = 0, merged = 0;
-            for (const roomgen::Room& room : r.rooms) {
+            int path = 0, spikeDoors = 0, merged = 0, loops = 0;
+            std::vector<int> degree(r.rooms.size(), 0);
+            for (const roomgen::Room& room : r.rooms)
                 if (room.kind != roomgen::RoomKind::Side) ++path;
-                if (room.spikeDoor) ++spikeDoors;
-                if (room.merged) ++merged;
+            for (const roomgen::Door& door : r.doors) {
+                spikeDoors += door.spike;
+                merged += door.merged;
+                loops += door.loop;
+                ++degree[static_cast<std::size_t>(door.a)];
+                ++degree[static_cast<std::size_t>(door.b)];
             }
-            char buf[200];
+            for (int d : degree) {
+                graph.degree.add(d);
+                graph.twoPlus += d >= 2;
+            }
+            graph.cycles.add(loops);
+            graph.spikeDoors.add(r.doors.empty() ? 0.0 : static_cast<double>(spikeDoors) / r.doors.size());
+            char buf[240];
             std::snprintf(buf, sizeof(buf),
-                          "%dx%d slots, %zu rooms (%d on the path, %zu side), %s walls, "
-                          "%d spike doors, %d merged, attempt %d, rooms by WFC %d/%zu%s",
+                          "%dx%d slots, %zu rooms (%d on the path, %zu side), %zu doors (%d close "
+                          "cycles, %d spikes, %d merged), %s walls, attempt %d, rooms by WFC %d/%zu%s",
                           r.slotsX, r.slotsY, r.rooms.size(), path, r.rooms.size() - path,
-                          roomgen::wallsName(r.walls), spikeDoors, merged, r.attempts, r.wfcRooms,
-                          r.rooms.size(), r.spikesRepaired ? ", spikes repaired" : "");
+                          r.doors.size(), loops, spikeDoors, merged, roomgen::wallsName(r.walls),
+                          r.attempts, r.wfcRooms, r.rooms.size(),
+                          r.spikesRepaired ? ", spikes repaired" : "");
             about = buf;
         } else {
             const Level level = LevelGenerator::generateRandom(seed);
@@ -378,6 +471,11 @@ int main(int argc, char** argv) {
         if (asLevel && ok) replayed = replay(level, solution);
         verified += ok;
         won += replayed;
+        if (asLevel && ok) {
+            const double lost = naiveLossRate(level, seed);
+            naiveLoses.add(lost);
+            naiveNeverLoses += lost == 0;
+        }
         if (asLevel) {
             // the .lvl text must read back as the same level, size included
             Level back;
@@ -430,6 +528,28 @@ int main(int argc, char** argv) {
     if (o.algo == "rooms" && o.wfc)
         std::printf("rooms by WFC %d/%d (%.1f%%), spikes repaired in %d levels\n", wfcRooms,
                     allRooms, allRooms ? 100.0 * wfcRooms / allRooms : 0.0, repaired);
+    if (o.algo == "rooms" && graph.degree.n)
+        std::printf("room graph: %.1f doors per room, %.0f%% of rooms with 2+ doors, %.1f cycles "
+                    "per level, %.0f%% of doors spiked\n",
+                    graph.degree.sum / graph.degree.n, 100.0 * graph.twoPlus / graph.degree.n,
+                    graph.cycles.sum / graph.cycles.n, 100 * graph.spikeDoors.sum / graph.spikeDoors.n);
+    if (naiveLoses.n) {
+        Stat originalLoses;
+        for (int i = 0; i < Level::levelCount(Mode::Normal); ++i) {
+            Level original;
+            if (!original.loadFromFile(Level::pathFor(Mode::Normal, i, o.assets)) ||
+                !hint::supported(original.grid))
+                continue;
+            originalLoses.add(naiveLossRate(original, static_cast<std::uint32_t>(i + 1)));
+        }
+        std::printf("a naive player (nearest carrot first) loses %.0f%% of tries, and never loses "
+                    "on %d of %d levels",
+                    100 * naiveLoses.sum / naiveLoses.n, naiveNeverLoses, naiveLoses.n);
+        if (originalLoses.n)
+            std::printf("; on the %d original levels without extra mechanics it loses %.0f%%",
+                        originalLoses.n, 100 * originalLoses.sum / originalLoses.n);
+        std::printf("\n");
+    }
     checkAutotile(o.assets);
 
     return playable && (verified != o.count || won != o.count || roundTrips != o.count) ? 1 : 0;

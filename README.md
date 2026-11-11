@@ -97,8 +97,10 @@ table matches `kTileChars` in `src/core/tilechar.hpp`.
 
 <kbd>G</kbd> builds a level from rooms (`src/core/roomgen.{hpp,cpp}`, the
 Spelunky approach): the map is cut into a grid of room slots, a random path of
-rooms runs from the start to the exit, side rooms hang off it, and the doors on
-the path may be spikes (crossed once).
+rooms runs from the start to the exit, side rooms hang off it, and more doors
+between neighbouring rooms close cycles, so that most rooms open into two to
+four others and there is more than one way through. Any door may be spikes:
+crossed once, at the wrong moment it cuts Bobby off from what lies behind it.
 
 The rooms are filled by wave function collapse (`src/core/wfc.{hpp,cpp}`):
 every 3 × 3 window of the 30 original carrot levels, written in five symbols
@@ -113,10 +115,12 @@ model is learned from `assets/v1/level` on the first <kbd>G</kbd>.
 
 Hedge and fence pieces are then picked from their neighbours by
 `src/core/autotile.{hpp,cpp}`, whose tables were read off the 50 original
-levels. Every level is checked with the hint solver. Spikes that block the way
-are thinned out, and more are added towards six, each kept only if the level
-stays winnable and if it leaves at most two of the 3 × 3 windows around it
-unlike the originals. The solution is handed to the hint as the reference. The
+levels. Every level is checked with the hint solver: the spikes are put in
+one at a time, door spikes first, each kept only if some order still wins;
+more are added towards a target (six on 16 × 16), each also leaving at most two
+of the 3 × 3 windows around it unlike the originals. Each check walks the
+current solution, and only when the new spike breaks it does the solver look
+for another way, a few times a level at most. The solution is handed to the hint as the reference. The
 seed and the time it took are printed to the browser console, and the seed gives
 the same level in the bench.
 
@@ -137,6 +141,10 @@ $ build-hint/gen_bench --count 300 -q --content patterns         # fixed pattern
 $ build-hint/gen_bench --algo walk --count 300 -q                # the old random walk
 $ build-hint/gen_bench --size 32x32 --count 3                     # a bigger map
 ```
+
+The summary also has the room graph (doors per room, cycles) and how often a
+naive player, who always walks to the nearest carrot, cuts himself off: 43% of
+tries on 16 × 16 levels, 59% on the original levels without extra mechanics.
 
 "patterns" in the summary is the share of a level's 3 × 3 windows that also
 occur in an original. With `--holdout` WFC learns from the odd originals and is
