@@ -73,14 +73,16 @@ public:
     // Moving along the suggested path shortens it. Moving off it re-routes
     // back to the remembered path, or asks the solver if that route is
     // broken; if the solver gives up, the hint disappears until the next
-    // requestHint().
+    // requestHint(). A carrot taken off the path rebuilds the route so it does
+    // not come back to taken carrots where it can avoid them.
     // Its `moves` always start at Bobby's current cell, in step with hintPath().
     const hint::Result* hint() const { return hintShown_ ? &hint_ : nullptr; }
     // Cells still ahead on the suggested path, the next one first.
     const std::vector<Coord>& hintPath() const { return hintPath_; }
 
 private:
-    void answerHint(bool rejoinOnly);
+    void answerHint(bool rejoinOnly, bool tookCarrot = false);
+    hint::Result routeAroundCarrots(Coord pos) const;
     void followHint();
 
     std::string root_;

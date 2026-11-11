@@ -176,6 +176,49 @@ int main(int argc, char** argv) {
     g.update();
     check(g.hint() != nullptr, "toggle: hide and show within one tick still answers");
 
+    // generated levels: after a carrot taken off the path the new route does
+    // not come back to it when the level has a way around, and still wins
+    int aroundOk = 0, aroundBad = 0;
+    for (unsigned seed = 1; seed <= 20; ++seed) {
+        g.loadProcedural(seed);
+        settle(g);
+        h = askHint(g);
+        if (!h || h->verdict != hint::Verdict::Winnable) continue;
+        const std::vector<Dir> plan = h->moves;
+        for (std::size_t k = 0; k < plan.size(); ++k) {
+            g.restart();
+            settle(g);
+            askHint(g);
+            for (std::size_t i = 0; i < k; ++i) move(g, plan[i]);
+            if (!g.hint() || g.hintPath().empty()) continue;
+            const Coord before = g.player().cell();
+            for (Dir d : {Dir::Up, Dir::Down, Dir::Left, Dir::Right}) {
+                const Coord to{before.x + dirDX(d), before.y + dirDY(d)};
+                if (!Grid::inBounds(to.x, to.y) || to == g.hintPath().front() ||
+                    g.grid().at(to) != T_CARROT)
+                    continue;
+                move(g, d);
+                if (!g.hint()) { ++aroundBad; break; }
+                if (g.hint()->verdict != hint::Verdict::Winnable) break;
+                Grid around = g.grid();
+                around.at(to) = T_CRACKED;    // may leave the carrot, never return
+                const bool avoidable =
+                    hint::compute(around, to, {}).verdict == hint::Verdict::Winnable;
+                bool back = false;
+                for (Coord c : g.hintPath()) back = back || c == to;
+                const std::vector<Dir> route = g.hint()->moves;
+                for (Dir r : route) move(g, r);
+                for (int i = 0; i < 200 && !g.levelComplete(); ++i) g.update();
+                if (g.levelComplete() && !(avoidable && back)) ++aroundOk;
+                else ++aroundBad;
+                break;
+            }
+        }
+    }
+    check(aroundOk > 0 && aroundBad == 0,
+          "generated: carrots taken off the path are not walked over again (ok " +
+              std::to_string(aroundOk) + ", wrong " + std::to_string(aroundBad) + ")");
+
     // levels with conveyors and other extras are not covered
     g.load(Mode::Normal, 7);
     settle(g);

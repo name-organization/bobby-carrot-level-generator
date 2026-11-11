@@ -114,12 +114,17 @@ void Game::hideHint() {
 // `rejoinOnly`: Bobby stepped off a shown path. He is led back to the
 // remembered route at no cost; the solver runs only when that route is broken
 // (e.g. he stood on a spike the route still needs).
-void Game::answerHint(bool rejoinOnly) {
+// `tookCarrot`: that step took a carrot ahead of the route, so the route is
+// rebuilt not to come back to the carrots already taken.
+void Game::answerHint(bool rejoinOnly, bool tookCarrot) {
     hintRequested_ = false;
     const Coord pos = player_.cell();
 
     const auto started = std::chrono::steady_clock::now();
-    const hint::Result result = hint::compute(grid_, pos, reference_);
+    hint::Result result;
+    if (tookCarrot) result = routeAroundCarrots(pos);
+    if (result.verdict != hint::Verdict::Winnable)
+        result = hint::compute(grid_, pos, reference_);
     const double ms = std::chrono::duration<double, std::milli>(
                           std::chrono::steady_clock::now() - started).count();
 
@@ -163,7 +168,23 @@ void Game::followHint() {
         hintPath_.clear();
         return;
     }
-    answerHint(true);
+    answerHint(true, (lastEvents_ & ev::Carrot) != 0);
+}
+
+// A route that never comes back to a taken carrot: around all of them if it
+// can, else around the one Bobby stands on. Taken carrots become walls, and
+// Bobby's own cell a spike, so he may leave it but not return. Any route found
+// there is also legal on the real grid.
+hint::Result Game::routeAroundCarrots(Coord pos) const {
+    Grid all = grid_, last = grid_;
+    for (auto& t : all.cells)
+        if (t == T_CARROT_TAKEN) t = T_DEFAULT_GRASS;
+    all.at(pos) = last.at(pos) = T_CRACKED;
+    for (const Grid* g : {&all, &last}) {
+        const hint::Result r = hint::compute(*g, pos, {});
+        if (r.verdict == hint::Verdict::Winnable) return r;
+    }
+    return {};
 }
 
 }  // namespace bc
