@@ -7,6 +7,7 @@
 #include "level.hpp"
 #include "player.hpp"
 #include "rules.hpp"
+#include "wfc.hpp"
 
 namespace bc {
 
@@ -17,8 +18,12 @@ public:
     explicit Game(std::string assetRoot = "assets/v1") : root_(std::move(assetRoot)) {}
 
     bool load(Mode mode, int index);
+    // A new room-based level (roomgen.hpp); 0 picks a random seed.
     bool loadProcedural(unsigned int seed = 0);
-    bool loadLevel(Level level);
+    // Plays a level that is not one of the shipped files: a generated or an
+    // imported one. `reference` is a winning solution as moves from the start,
+    // if known. Always succeeds.
+    bool loadLevel(const Level& level, const std::vector<Dir>& reference = {});
     void restart();
 
     // Queue input for the next tick. `held` is a continuously pressed
@@ -72,17 +77,28 @@ public:
     // The last answer, or nullptr if there is none for the current position.
     // Moving along the suggested path shortens it. Moving off it re-routes
     // back to the remembered path without the solver; if that route is
-    // broken, the hint disappears until the next requestHint().
+    // broken (a spike it needed has fired, say), the solver is asked with a
+    // small budget, and only if that runs out does the hint disappear until
+    // the next requestHint().
     // Its `moves` always start at Bobby's current cell, in step with hintPath().
     const hint::Result* hint() const { return hintShown_ ? &hint_ : nullptr; }
     // Cells still ahead on the suggested path, the next one first.
     const std::vector<Coord>& hintPath() const { return hintPath_; }
 
 private:
+    // SAT conflicts the solver may spend re-routing after a step off the hint
+    // path, against 400000 for a hint asked with H.
+    static constexpr long long kRerouteConflicts = 50000;
+
     void answerHint(bool rejoinOnly);
     void followHint();
+    // Learned from the original carrot levels on first use; nullptr if they
+    // cannot be read, and the generator then uses its fixed patterns.
+    const wfc::Model* wfcModel();
 
     std::string root_;
+    wfc::Model wfcModel_;
+    bool wfcLearned_ = false;
     Level level_;
     Grid grid_;
     Player player_;

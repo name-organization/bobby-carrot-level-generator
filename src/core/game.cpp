@@ -1,9 +1,12 @@
 #include "game.hpp"
+#include "canvas.hpp"
 #include "generator.hpp"
+#include "roomgen.hpp"
 
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
+#include <random>
 
 namespace bc {
 
@@ -27,19 +30,52 @@ bool Game::load(Mode mode, int index) {
     return true;
 }
 
+const wfc::Model* Game::wfcModel() {
+    if (!wfcLearned_) {
+        wfcLearned_ = true;
+        std::vector<Canvas> samples;
+        for (int i = 0; i < Level::levelCount(Mode::Normal); ++i) {
+            Level original;
+            if (original.loadFromFile(Level::pathFor(Mode::Normal, i, root_)))
+                samples.push_back(Canvas::fromLevel(original));
+        }
+        wfcModel_ = wfc::learn(samples);
+        std::printf("[gen] WFC: %zu patterns from %zu levels\n", wfcModel_.patterns.size(),
+                    samples.size());
+    }
+    return wfcModel_.empty() ? nullptr : &wfcModel_;
+}
+
 bool Game::loadProcedural(unsigned int seed) {
-    Level next = LevelGenerator::generateRandom(seed);
-    level_ = next;
-    mode_ = Mode::Normal;
-    index_ = -1; // Обозначает пользовательский/процедурный уровень
-    restart();
+    if (seed == 0) seed = std::random_device{}();
+    roomgen::Params params;
+    params.model = wfcModel();
+    const auto started = std::chrono::steady_clock::now();
+    const roomgen::Result gen = roomgen::generate(params, seed);
+    const double ms = std::chrono::duration<double, std::milli>(
+                          std::chrono::steady_clock::now() - started).count();
+    Level next;
+    if (!gen.canvas.toLevel(next, "generated " + std::to_string(seed))) {
+        // the room generator gave nothing playable: fall back to the old one
+        std::fprintf(stderr, "[gen] seed %u: room generator failed, using the random walk\n", seed);
+        loadLevel(LevelGenerator::generateRandom(seed));
+        return true;
+    }
+    std::printf("[gen] seed %u: %zu rooms (%d by WFC), %s walls, %s after %d attempt(s), "
+                "%zu moves, %.1f ms\n",
+                seed, gen.rooms.size(), gen.wfcRooms, roomgen::wallsName(gen.walls),
+                gen.verified ? "verified" : "NOT verified", gen.attempts, gen.solution.size(), ms);
+    loadLevel(next, gen.solution);
     return true;
 }
 
-bool Game::loadLevel(Level level) {
-    level_ = std::move(level);
+bool Game::loadLevel(const Level& level, const std::vector<Dir>& reference) {
+    level_ = level;
     mode_ = Mode::Normal;
-    index_ = -1;
+    index_ = -1;  // not one of the shipped levels
+    // a reference left over from the previous level must not reach this one
+    levelReference_ = reference.empty() ? std::vector<Coord>{}
+                                        : hint::cellsAlong(level_.start, reference);
     restart();
     return true;
 }
@@ -119,7 +155,17 @@ void Game::answerHint(bool rejoinOnly) {
     hint::Options options;
     options.useSolver = !rejoinOnly;
     const auto started = std::chrono::steady_clock::now();
-    const hint::Result result = hint::compute(grid_, pos, reference_, options);
+    hint::Result result = hint::compute(grid_, pos, reference_, options);
+    if (rejoinOnly && result.verdict == hint::Verdict::Unknown) {
+        // The remembered route is broken -- typically Bobby stepped on a spike
+        // the route still needed, or the way back to it crosses one. Ask the
+        // solver now instead of hiding the hint: it finds a new route or says
+        // the level is lost (the board turns red). The budget is kept small so
+        // that a step never stalls; past it the hint hides as before.
+        hint::Options reroute;
+        reroute.conflictBudget = kRerouteConflicts;
+        result = hint::compute(grid_, pos, reference_, reroute);
+    }
     const double ms = std::chrono::duration<double, std::milli>(
                           std::chrono::steady_clock::now() - started).count();
 
@@ -128,7 +174,7 @@ void Game::answerHint(bool rejoinOnly) {
                 result.moves.size(), ms);
 
     if (rejoinOnly && result.verdict == hint::Verdict::Unknown) {
-        // the remembered route is broken: hide the hint until H is pressed
+        // not even the solver could tell in time: hide the hint until H is pressed
         hintShown_ = false;
         hintPath_.clear();
         return;

@@ -91,6 +91,59 @@ Files: `assets/v1/level/normal01.lvl` … `normal30.lvl` and `egg01.lvl` …
 `o` (a taken carrot) and `?` are internal and do not appear in files. The
 table matches `kTileChars` in `src/core/tilechar.hpp`.
 
+## Level generator
+
+<kbd>G</kbd> builds a level from rooms (`src/core/roomgen.{hpp,cpp}`, the
+Spelunky approach): the map is cut into a grid of room slots, a random path of
+rooms runs from the start to the exit, side rooms hang off it, and the doors on
+the path may be spikes (crossed once).
+
+The rooms are filled by wave function collapse (`src/core/wfc.{hpp,cpp}`):
+every 3 × 3 window of the 30 original carrot levels, written in five symbols
+(hedge, fence, path, carrot, spike) and taken in all eight orientations, is a
+pattern, and the map is filled so that every 3 × 3 window in it is one of them
+-- the whole map in one run first, so that each wall is chosen knowing both
+rooms it separates, and room by room (each with its walls) if that fails. The
+layout pins the doors, the cells they lead to, the start and the exit; a
+one-cell wall between two rooms may come out hedge or fence. A room WFC cannot
+fill (about 4%) gets fixed patterns (carrot fields, rows, pillars) instead. The
+model is learned from `assets/v1/level` on the first <kbd>G</kbd>.
+
+Hedge and fence pieces are then picked from their neighbours by
+`src/core/autotile.{hpp,cpp}`, whose tables were read off the 50 original
+levels. Every level is checked with the hint solver. Spikes that block the way
+are thinned out, and more are added towards six, each kept only if the level
+stays winnable and if it leaves at most two of the 3 × 3 windows around it
+unlike the originals. The solution is handed to the hint as the reference. The
+seed and the time it took are printed to the browser console, and the seed gives
+the same level in the bench.
+
+The generator works on a `Canvas` of any size (`src/core/canvas.hpp`); only a
+16 × 16 one can be verified and played until the engine supports bigger maps.
+The room size is `roomgen::Params::roomSize` (4 by default).
+
+The bench generates levels, verifies them, replays each solution through the
+real `Game` and compares area, carrots, spikes and 3 × 3 patterns with the
+originals:
+
+```bash
+$ tools/build_hint_tests.sh && build-hint/gen_bench --count 5      # print 5 levels
+$ build-hint/gen_bench --count 300 -q --room 5                   # summary only
+$ build-hint/gen_bench --count 300 -q --holdout                  # WFC scored on unseen originals
+$ build-hint/gen_bench --count 300 -q --content patterns         # fixed patterns instead of WFC
+$ build-hint/gen_bench --algo walk --count 300 -q                # the old random walk
+$ build-hint/gen_bench --size 32x24 --room 5 --count 1           # a bigger map
+```
+
+"patterns" in the summary is the share of a level's 3 × 3 windows that also
+occur in an original. With `--holdout` WFC learns from the odd originals and is
+scored against the even ones; the originals score 37% against each other, the
+fixed patterns 40% and WFC 48% (500 levels, 4 × 4 rooms). The knobs behind
+these numbers (carrot and hedge weights, added spikes, fill) are documented in
+`roomgen::Params` with what each setting measured.
+
+All options are listed at the top of `tests/gen_bench.cpp`.
+
 ## Hint
 
 Press <kbd>H</kbd> during a level to show a path to the exit, press it again to

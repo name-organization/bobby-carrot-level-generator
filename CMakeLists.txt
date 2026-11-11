@@ -15,14 +15,19 @@ set(CORE_SOURCES
     src/core/player.cpp
     src/core/game.cpp
     src/core/generator.cpp
+    src/core/roomgen.cpp
+    src/core/autotile.cpp
+    src/core/wfc.cpp
     src/core/sat.cpp
     src/core/hint.cpp
 )
 
-# base64 library
+# base64 library, used by level export/import (src/core/level.cpp), so every
+# target built from CORE_SOURCES needs it.
 set(BASE64_SOURCES
     src/third_party/base64/base64.cpp
 )
+include_directories(src/third_party/base64)
 
 # CaDiCaL SAT solver, used by the hint (src/core/sat.cpp). Built from its
 # sources without its own configure script: NBUILD makes it guess the build
@@ -51,7 +56,6 @@ set(GAME_SOURCES
 
 add_executable(bobby ${GAME_SOURCES})
 target_link_libraries(bobby PRIVATE cadical)
-target_include_directories(bobby PRIVATE src/third_party/base64)
 
 # stb_vorbis is third-party C that warns a lot; keep our own warnings loud.
 set_source_files_properties(src/third_party/stb_vorbis_impl.c
@@ -104,18 +108,24 @@ else()
     # Rule verification harness: proves every original level is still solvable
     # under the reconstructed tile semantics. Native only -- it is a test, not
     # something to ship to the browser.
-    add_executable(solve_levels tests/solve_levels.cpp ${CORE_SOURCES})
+    add_executable(solve_levels tests/solve_levels.cpp ${CORE_SOURCES} ${BASE64_SOURCES})
     target_link_libraries(solve_levels PRIVATE cadical)
 
     # Hint through the real Game class: follow it to the exit on levels 1-7.
-    add_executable(hint_game tests/hint_game.cpp ${CORE_SOURCES})
+    add_executable(hint_game tests/hint_game.cpp ${CORE_SOURCES} ${BASE64_SOURCES})
     target_link_libraries(hint_game PRIVATE cadical)
+
+    # Level generator bench: generate, verify, replay, compare with the originals.
+    add_executable(gen_bench tests/gen_bench.cpp ${CORE_SOURCES} ${BASE64_SOURCES})
+    target_link_libraries(gen_bench PRIVATE cadical)
 
     enable_testing()
     add_test(NAME levels_solvable
              COMMAND solve_levels "${CMAKE_SOURCE_DIR}/assets/v1" 8000000)
     add_test(NAME hint_in_game
              COMMAND hint_game "${CMAKE_SOURCE_DIR}/assets/v1")
+    add_test(NAME generated_levels_winnable
+             COMMAND gen_bench --count 200 -q --assets "${CMAKE_SOURCE_DIR}/assets/v1")
 endif()
 
 target_compile_options(bobby PRIVATE -Wall -Wextra -Wno-unused-parameter)
