@@ -45,6 +45,13 @@ bool parseSize(const std::string& text, int& out) {
     return true;
 }
 
+// Empty: a link from before difficulties, `rated` false (App::startFromSeed).
+bool parseDifficulty(const std::string& text, bc::Difficulty& out, bool& rated) {
+    rated = !text.empty();
+    out = bc::Difficulty::Medium;
+    return text.empty() || bc::difficulty::parse(text, out);
+}
+
 void frameCallback(void* arg) {
     auto* app = static_cast<bc::platform::App*>(arg);
     app->frame();
@@ -104,24 +111,32 @@ EMSCRIPTEN_KEEPALIVE void bc_set_audio(int music, int sound, int muted) {
 }
 // 1 while the Settings page is open
 EMSCRIPTEN_KEEPALIVE void bc_set_paused(int paused) { g_app.setPaused(paused != 0); }
+// The New level dialog: 0 easy, 1 medium, 2 hard
+EMSCRIPTEN_KEEPALIVE void bc_set_difficulty(int difficulty) {
+    if (difficulty >= 0 && difficulty <= 2)
+        g_app.setGeneratedDifficulty(static_cast<bc::Difficulty>(difficulty));
+}
 }
 #endif
 
 int main(int argc, char** argv) {
     std::string assetRoot = "assets/v1";
     bool handheld = false;
-    // A shared generated level: its seed and map side, as text.
+    // A shared generated level: its seed, map side and difficulty, as text.
     std::string startSeed;
     std::string startSize;
+    std::string startDifficulty;
 
 #ifdef __EMSCRIPTEN__
     {
-        // shell.html copies ?seed= and ?size= here
+        // shell.html copies ?seed=, ?size= and ?difficulty= here
         emscripten::val module = emscripten::val::global("Module");
         emscripten::val seed = module["__seed"];
         emscripten::val size = module["__size"];
+        emscripten::val difficulty = module["__difficulty"];
         if (seed.isString()) startSeed = seed.as<std::string>();
         if (size.isString()) startSize = size.as<std::string>();
+        if (difficulty.isString()) startDifficulty = difficulty.as<std::string>();
     }
 #endif
 
@@ -139,6 +154,9 @@ int main(int argc, char** argv) {
         else if (std::strncmp(argv[i], "--size=", 7) == 0) {
             startSize = argv[i] + 7;
         }
+        else if (std::strncmp(argv[i], "--difficulty=", 13) == 0) {
+            startDifficulty = argv[i] + 13;
+        }
 #ifndef __EMSCRIPTEN__
         else if (std::strcmp(argv[i], "--shot") == 0 && i + 4 < argc) {
             const bc::Mode mode =
@@ -154,15 +172,19 @@ int main(int argc, char** argv) {
     if (handheld) g_app.setViewMode(bc::gfx::ViewMode::Handheld);
 
     // A link to a generated level starts in it. Without a size it is the
-    // classic 16 x 16.
+    // classic 16 x 16; without a difficulty, the level the link gave before
+    // there were difficulties.
     if (!startSeed.empty()) {
         unsigned int seed = 0;
         int size = 0;
-        if (parseSeed(startSeed, seed) && parseSize(startSize, size)) {
-            g_app.startFromSeed(seed, size);
+        bc::Difficulty difficulty = bc::Difficulty::Medium;
+        bool rated = true;
+        if (parseSeed(startSeed, seed) && parseSize(startSize, size) &&
+            parseDifficulty(startDifficulty, difficulty, rated)) {
+            g_app.startFromSeed(seed, size, difficulty, rated);
         } else {
-            std::fprintf(stderr, "[bobby] bad level link: seed '%s', size '%s'\n",
-                         startSeed.c_str(), startSize.c_str());
+            std::fprintf(stderr, "[bobby] bad level link: seed '%s', size '%s', difficulty '%s'\n",
+                         startSeed.c_str(), startSize.c_str(), startDifficulty.c_str());
         }
     }
 

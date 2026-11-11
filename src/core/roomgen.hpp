@@ -34,6 +34,7 @@
 #include <vector>
 
 #include "canvas.hpp"
+#include "difficulty.hpp"
 #include "types.hpp"
 
 namespace bc::wfc {
@@ -111,10 +112,12 @@ struct Params {
     int wfcTries = 4;         // WFC runs per room before the fixed patterns take over
     int wfcNodeBudget = 300;  // search nodes per run
 
-    // Defaults for a map of the given size, measured with tests/gen_bench.cpp
-    // over 200 levels each (carrots aimed at the originals' 27% of the
-    // walkable area; "naive loses" is how often a player who always goes for
-    // the nearest carrot cuts himself off -- 59% on the originals 1-7):
+    // Defaults for a map of the given size and difficulty, measured with
+    // tests/gen_bench.cpp over 200 levels each (carrots aimed at the
+    // originals' 27% of the walkable area; "naive loses" is how often a player
+    // who always goes for the nearest carrot cuts himself off -- 59% on the
+    // originals 1-7). Medium is what the generator made before it had
+    // difficulties, so links without one still give the same levels:
     //
     //   map    room  carrot  spikes  doors/room  cycles  naive loses  likeness  native
     //   16x16  4x4   700%     6      2.1         1.2     43%          49%        7 ms
@@ -125,7 +128,36 @@ struct Params {
     // price is likeness, since the originals' rooms are small (5x5 rooms on
     // 32x32 score 46%). The spike target stays under the originals' density
     // on big maps because every spike is one more solver run.
-    static Params forSize(int width, int height);
+    //
+    // Easy and Hard change the levers that move the difficulty score
+    // (difficulty.hpp) the most: the share of doors laid as spikes, the spike
+    // target and how much of the map the rooms take; Hard also closes fewer
+    // cycles, so that a burnt spike more often cuts something off.
+    //
+    //              fill  spike doors  spike target    cycles
+    //   easy       0.55  0.1          0.4x medium     0.8
+    //   medium     0.75  0.5          6 / 12 / 20     0.8
+    //   hard       0.85  1.0          2x medium       0.3
+    //
+    // What comes out with generateRated() and 3 tries, 200 levels each
+    // (seeds 1-200; "in band" is the share of levels
+    // whose score lands in the band asked for, the others are the closest of
+    // their 3 tries; native ms on one core, 50 levels):
+    //
+    //   map    difficulty  score       in band  tries  spikes  naive loses  native
+    //   16x16  easy        16 (0-37)   100%     1.1     2.0     4%           23 ms
+    //   16x16  medium      48 (19-76)   60%     2.4     6.0    36%           60 ms
+    //   16x16  hard        82 (39-100)  97%     1.4     9.9    78%           28 ms
+    //   24x24  easy        10 (0-44)    99%     1.1     3.8     9%           85 ms
+    //   24x24  medium      50 (12-88)   56%     2.4    10.7    61%          251 ms
+    //   24x24  hard        80 (41-100)  97%     1.4    17.2    90%          125 ms
+    //   32x32  easy        11 (0-37)   100%     1.3     7.8    22%          108 ms
+    //   32x32  medium      51 (21-73)   76%     2.0    18.5    78%          282 ms
+    //   32x32  hard        73 (55-91)   99%     1.2    31.2    98%          214 ms
+    //
+    // Medium levels spread the widest, so Medium needs the most tries; with
+    // 5 tries 74-91% land in the band, for 30% more time.
+    static Params forSize(int width, int height, Difficulty difficulty = Difficulty::Medium);
 };
 
 struct Room {
@@ -160,10 +192,22 @@ struct Result {
     int wfcRooms = 0;       // rooms filled by WFC
     int fallbackRooms = 0;  // rooms filled by the fixed patterns
     bool spikesRepaired = false;  // spikes had to be thinned out to win
+    // Set by generateRated(): the score of this level and how many levels
+    // were built to find it.
+    difficulty::Rating rating;
+    int tries = 1;
 };
 
 // Same seed and params give the same level on every platform.
 Result generate(const Params& params, std::uint32_t seed);
+
+// A level of the given difficulty (made with Params::forSize(..., difficulty)).
+// Builds up to `tries` levels, try k from difficulty::trySeed(seed, k), and
+// returns the first whose score falls into the difficulty's band, or the one
+// closest to it. With `tries` 1 the first level is taken as it is, which is
+// what generate() gives.
+Result generateRated(const Params& params, std::uint32_t seed, Difficulty difficulty,
+                     int tries = difficulty::kTries);
 
 const char* wallsName(Walls walls);
 bool parseWalls(std::string_view text, Walls& out);

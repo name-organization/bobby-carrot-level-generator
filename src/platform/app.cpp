@@ -158,8 +158,9 @@ void App::startLevel(Mode mode, int index) {
     pendingTap_ = Dir::None;
 }
 
-void App::generateLevel(unsigned int seed) {
-    if (!game_.loadProcedural(seed, generatedSize_, generatedSize_)) {  // 0 picks a random seed
+void App::generateLevel(unsigned int seed, bool rated) {
+    // 0 picks a random seed
+    if (!game_.loadProcedural(seed, generatedSize_, generatedSize_, generatedDifficulty_, rated)) {
         std::fprintf(stderr, "cannot generate a level\n");
         return;
     }
@@ -172,9 +173,9 @@ void App::askToGenerate() {
 #ifdef __EMSCRIPTEN__
     const bool asked = EM_ASM_INT({
         if (!Module.askSeed) return 0;
-        Module.askSeed($0);
+        Module.askSeed($0, $1);
         return 1;
-    }, generatedSize_);
+    }, generatedSize_, static_cast<int>(generatedDifficulty_));
     if (asked) return;
 #endif
     generateLevel();
@@ -262,9 +263,13 @@ void App::reportLevelUrl() {
     const bool generated = onLevel && game_.levelIndex() < 0 && game_.seed() != 0;
     const unsigned int seed = generated ? game_.seed() : 0;
     const int size = generated ? game_.generatedWidth() : 0;
-    if (seed == reportedSeed_ && size == reportedSize_) return;
+    // a level from a link without a difficulty keeps a link without one
+    const int difficulty =
+        generated && game_.generatedRated() ? static_cast<int>(game_.generatedDifficulty()) : -1;
+    if (seed == reportedSeed_ && size == reportedSize_ && difficulty == reportedDifficulty_) return;
     reportedSeed_ = seed;
     reportedSize_ = size;
+    reportedDifficulty_ = difficulty;
 #ifdef __EMSCRIPTEN__
     // replaceState, not pushState: a new level is no page to go back to
     EM_ASM({
@@ -273,12 +278,15 @@ void App::reportLevelUrl() {
         if ($0 >>> 0) {
             u.searchParams.set('seed', String($0 >>> 0));
             u.searchParams.set('size', String($1));
+            if ($2 >= 0) u.searchParams.set('difficulty', ['easy', 'medium', 'hard'][$2]);
+            else u.searchParams.delete('difficulty');
         } else {
             u.searchParams.delete('seed');
             u.searchParams.delete('size');
+            u.searchParams.delete('difficulty');
         }
         if (u.href !== window.location.href) window.history.replaceState(null, "", u.href);
-    }, seed, size);
+    }, seed, size, difficulty);
 #endif
 }
 
@@ -459,8 +467,14 @@ void App::onKey(SDL_Keycode key) {
             std::printf("[gen] map size %dx%d\n", generatedSize_, generatedSize_);
             if (screen_ == Screen::Play && game_.levelIndex() < 0) generateLevel();
             break;
+        case SDLK_l:
+            // the difficulty of generated maps: easy, medium, hard, then back
+            generatedDifficulty_ = difficulty::next(generatedDifficulty_);
+            std::printf("[gen] difficulty %s\n", difficulty::name(generatedDifficulty_));
+            if (screen_ == Screen::Play && game_.levelIndex() < 0) generateLevel();
+            break;
         case SDLK_q: goToMainMenu(); break;
-        // export the generated level as a link: its seed and map size
+        // export the generated level as a link: its seed, map size and difficulty
         case SDLK_e: {
             if (screen_ != Screen::Play || game_.levelIndex() >= 0 || game_.seed() == 0) break;
             reportLevelUrl();  // the address already names this level
@@ -478,7 +492,11 @@ void App::onKey(SDL_Keycode key) {
                 }
             });
 #else
-            std::printf("share: --seed=%u --size=%d\n", game_.seed(), game_.generatedWidth());
+            if (game_.generatedRated())
+                std::printf("share: --seed=%u --size=%d --difficulty=%s\n", game_.seed(),
+                            game_.generatedWidth(), difficulty::name(game_.generatedDifficulty()));
+            else
+                std::printf("share: --seed=%u --size=%d\n", game_.seed(), game_.generatedWidth());
 #endif
             break;
         }
@@ -679,13 +697,14 @@ void App::render() {
     gfx_.present();
 }
 
-bool App::startFromSeed(unsigned int seed, int size) {
+bool App::startFromSeed(unsigned int seed, int size, Difficulty difficulty, bool rated) {
     if (seed == 0 || !isGeneratedSize(size)) {
         std::fprintf(stderr, "[bobby] bad level link: seed %u, size %d\n", seed, size);
         return false;
     }
     generatedSize_ = size;
-    generateLevel(seed);
+    generatedDifficulty_ = rated ? difficulty : Difficulty::Medium;
+    generateLevel(seed, rated);
     return screen_ == Screen::Play;
 }
 

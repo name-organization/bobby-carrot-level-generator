@@ -89,6 +89,10 @@
     }
     #seed-input:focus, #seed-input.selected { border-color: #c7792f; outline: none; }
     #seed-error { color: #e0866b; min-height: 1.5em; }
+    /* Difficulty of the level: three buttons, the chosen one marked. */
+    #seed-difficulty { display: flex; gap: 8px; justify-content: center; }
+    #seed-difficulty .btn { min-width: 0; padding: 6px 12px; }
+    #seed-difficulty .btn[aria-pressed="true"] { color: #f0b46a; text-decoration: underline; }
   </style>
 </head>
 <body>
@@ -115,6 +119,11 @@
   <div id="seed-dialog" class="page hidden" role="dialog" aria-labelledby="seed-title">
     <h2 id="seed-title">New level</h2>
     <div class="note" id="seed-size"></div>
+    <div id="seed-difficulty" role="group" aria-label="difficulty">
+      <button class="btn diff" id="btn-diff-easy" type="button" aria-pressed="false">Easy</button>
+      <button class="btn diff" id="btn-diff-medium" type="button" aria-pressed="true">Medium</button>
+      <button class="btn diff" id="btn-diff-hard" type="button" aria-pressed="false">Hard</button>
+    </div>
     <div id="seed-choice">
       <button class="btn" id="btn-seed-random" type="button">Random seed</button>
       <button class="btn" id="btn-seed-fixed" type="button">Enter seed</button>
@@ -141,6 +150,7 @@
   <div class="row" id="nav-keys">
     <span><button class="key" type="button" tabindex="-1" data-nav="up">↑</button><button class="key" type="button" tabindex="-1" data-nav="down">↓</button> choose</span>
     <span data-pages="settings"><button class="key" type="button" tabindex="-1" data-nav="left">←</button><button class="key" type="button" tabindex="-1" data-nav="right">→</button> volume</span>
+    <span data-pages="seed"><button class="key" type="button" tabindex="-1" data-nav="left">←</button><button class="key" type="button" tabindex="-1" data-nav="right">→</button> difficulty</span>
     <span><button class="key" type="button" tabindex="-1" data-nav="enter">Enter</button> confirm</span>
     <span data-pages="seed seed-form settings"><button class="key" type="button" tabindex="-1" data-nav="back">Esc</button> <span id="nav-back-label">cancel</span></span>
   </div>
@@ -163,6 +173,7 @@
   <div class="row">
     <span data-show="play gen select"><button class="key" type="button" tabindex="-1" data-key="103">G</button> generate level</span>
     <span data-show="gen select"><button class="key" type="button" tabindex="-1" data-key="98">B</button> map size</span>
+    <span data-show="gen select"><button class="key" type="button" tabindex="-1" data-key="108">L</button> difficulty</span>
     <span data-show="play select"><button class="key" type="button" tabindex="-1" data-key="116">T</button> carrot/egg mode</span>
     <span data-show="gen"><button class="key" type="button" tabindex="-1" data-key="101">E</button> copy link to level</span>
   </div>
@@ -313,16 +324,39 @@
   }
 
   // --- seed dialog ----------------------------------------------------------
-  // Opened by the game (App::askToGenerate) through Module.askSeed(size).
-  // "Random seed" generates at once; "Enter seed" shows a field for one.
+  // Opened by the game (App::askToGenerate) through Module.askSeed(size,
+  // difficulty). The difficulty buttons (or Left / Right) pick the difficulty
+  // of the level; "Random seed" generates at once; "Enter seed" shows a field
+  // for one.
   const MAX_SEED = 4294967295;  // seeds are 32-bit, 0 means random
   const seedDialog = $('seed-dialog');
   const seedChoice = $('seed-choice');
   const seedForm = $('seed-form');
   const seedInput = $('seed-input');
   const seedError = $('seed-error');
-  const seedPage = makePage('seed', [$('btn-seed-random'), $('btn-seed-fixed')],
+  // Difficulties in the order of bc::Difficulty: 0 easy, 1 medium, 2 hard.
+  const diffButtons = [$('btn-diff-easy'), $('btn-diff-medium'), $('btn-diff-hard')];
+  let difficulty = 1;
+  const SEED_RANDOM_INDEX = diffButtons.length;  // "Random seed" on the page
+  const seedPage = makePage('seed', [...diffButtons, $('btn-seed-random'), $('btn-seed-fixed')],
                             { back: closeSeedDialog, backLabel: 'cancel' });
+
+  function showDifficulty(d) {
+    difficulty = d;
+    diffButtons.forEach((b, k) => b.setAttribute('aria-pressed', String(k === d)));
+  }
+  function setDifficulty(d) {
+    showDifficulty(d);
+    if (Module._bc_set_difficulty) Module._bc_set_difficulty(d);
+  }
+  // Left / Right on the New level page: the next easier or harder one.
+  function stepDifficulty(dir) {
+    const d = Math.min(diffButtons.length - 1, Math.max(0, difficulty + dir));
+    if (d === difficulty) return;
+    setDifficulty(d);
+    if (diffButtons.includes(seedPage.current())) seedPage.select(d);
+  }
+  diffButtons.forEach((b, k) => b.addEventListener('click', () => setDifficulty(k)));
   const seedFormPage = makePage('seed-form', [seedInput, $('btn-seed-go'), $('btn-seed-back')],
                                 { back: showSeedChoice, backLabel: 'back' });
 
@@ -332,12 +366,13 @@
     refresh();
   }
 
-  function openSeedDialog(size) {
+  function openSeedDialog(size, d) {
     $('seed-size').textContent = 'map ' + size + ' × ' + size;
+    showDifficulty(d === undefined ? 1 : d);
     seedInput.value = '';
     seedError.textContent = '';
     seedDialog.classList.remove('hidden');
-    seedPage.index = 0;
+    seedPage.index = SEED_RANDOM_INDEX;
     showSeedChoice();
   }
 
@@ -429,6 +464,7 @@
         if (typing) break;  // moves the cursor in the seed field
         e.preventDefault();
         if (el.type === 'range') stepSlider(el, e.key === 'ArrowLeft' ? -1 : 1);
+        else if (page === seedPage) stepDifficulty(e.key === 'ArrowLeft' ? -1 : 1);
         break;
       case 'Enter': case ' ':
         if (e.key === ' ' && typing) break;
@@ -473,6 +509,7 @@
         case 'down': page.move(1); break;
         case 'left': case 'right':
           if (el.type === 'range') stepSlider(el, k.dataset.nav === 'left' ? -1 : 1);
+          else if (page === seedPage) stepDifficulty(k.dataset.nav === 'left' ? -1 : 1);
           break;
         case 'enter': page.confirm(); break;
         case 'back': if (page.back) page.back(); break;
@@ -489,14 +526,18 @@
     canvas: canvas,
     preRun: [() => {
       try {
-        // A shared generated level: ?seed=<seed>&size=<side>, read by main().
+        // A shared generated level: ?seed=<seed>&size=<side>&difficulty=<easy|
+        // medium|hard>, read by main(). Links from before difficulties have none.
         const params = new URLSearchParams(window.location.search);
         const seed = params.get('seed');
         if (seed) {
           Module.__seed = seed;
           const size = params.get('size');
           if (size) Module.__size = size;
-          console.log('[bobby] start with seed ' + seed + ', size ' + (size || 16));
+          const diff = params.get('difficulty');
+          if (diff) Module.__difficulty = diff;
+          console.log('[bobby] start with seed ' + seed + ', size ' + (size || 16) +
+                      (diff ? ', difficulty ' + diff : ''));
         }
       } catch (e) {
         console.warn('[bobby] failed to parse URL:', e);

@@ -15,8 +15,9 @@ Game available at [http://localhost:8080](http://localhost:8080)
 
 1. Open [http://localhost:8080](http://localhost:8080).
 2. Choose a level:
-  - **Generate level** makes a new level: pick **Random seed**, or
-    **Enter seed** and type one (1 … 4294967295) to get that seed's level, or
+  - **Generate level** makes a new level: pick the difficulty (**Easy**,
+    **Medium** or **Hard**, or <kbd>←</kbd> <kbd>→</kbd>), then **Random seed**,
+    or **Enter seed** and type one (1 … 4294967295) to get that seed's level, or
   - **Select level** opens the list: click a level number. Levels unlock one
     by one, and progress is saved in the browser.
 3. Collect every carrot (in egg levels, walk over every patch of grass). The
@@ -49,8 +50,9 @@ listed under the game; each of them can also be clicked. All keys:
 | <kbd>R</kbd> | restart the level |
 | <kbd>G</kbd> | generate a new level: random seed or a given one |
 | <kbd>B</kbd> | size of generated maps: 16, 24 or 32 cells a side (generates one in a generated level) |
+| <kbd>L</kbd> | difficulty of generated maps: easy, medium or hard (generates one in a generated level) |
 | <kbd>T</kbd> | carrot / egg levels (not in a generated level) |
-| <kbd>E</kbd> | copy a link to the generated level (its seed and map size) |
+| <kbd>E</kbd> | copy a link to the generated level (its seed, map size and difficulty) |
 | <kbd>Esc</kbd> | back: from a level to the level list, from the list to the main menu; closes Settings (back to the level) and New level |
 | <kbd>Q</kbd> | main menu |
 | <kbd>F</kbd> | whole map / scrolling close-up view |
@@ -109,15 +111,40 @@ table matches `kTileChars` in `src/core/tilechar.hpp`.
 
 ### Sharing a generated level
 
-A generated level is fully given by its seed and map size: the generator uses
-its own random numbers (`src/core/rng.hpp`) and limits the solver by a count,
-not a time, so a seed gives the same level natively and in the browser.
-<kbd>E</kbd> puts both into the page address and copies it, e.g.
-`http://localhost:8080/?seed=123456&size=24`; opening that link starts the same
-level. `size` is 16, 24 or 32 and may be left out for 16. The native build
-prints `--seed=… --size=…` instead and takes the same two options on start.
-Levels made with <kbd>B</kbd> and the ones that follow a finished generated
-level get a random seed without asking.
+A generated level is fully given by its seed, map size and difficulty: the
+generator uses its own random numbers (`src/core/rng.hpp`), limits the solver by
+a count, not a time, and scores levels in integers, so a seed gives the same
+level natively and in the browser. <kbd>E</kbd> puts all three into the page
+address and copies it, e.g.
+`http://localhost:8080/?seed=123456&size=24&difficulty=hard`; opening that link
+starts the same level. `size` is 16, 24 or 32 and may be left out for 16.
+`difficulty` is `easy`, `medium` or `hard`; a link without one is a link from
+before difficulties and gives the level it always gave (the first medium level
+of the seed, not picked by its score). The native build prints
+`--seed=… --size=… --difficulty=…` instead and takes the same options on start.
+Levels made with <kbd>B</kbd> or <kbd>L</kbd> and the ones that follow a
+finished generated level get a random seed without asking.
+
+### Difficulty
+
+A generated level is easy, medium or hard. `src/core/difficulty.{hpp,cpp}`
+scores a level from 0 to 100 out of three measures, each compared with what is
+typical of a map of its size (so the difficulties mean the same on 16, 24 and
+32 cells):
+
+- **cover**: moves of the winning solution the generator verified the level
+  with, per walkable cell -- how many times over Bobby walks the island;
+- **spikes**: spikes per 100 walkable cells;
+- **naive**: how often a player who always goes for the nearest carrot cuts
+  himself off with a spike (out of 20 tries); it counts twice.
+
+Below 38 is easy, 62 and up is hard, medium lies between. A difficulty first
+sets the generator's parameters (`roomgen::Params::forSize`: easy has few spike
+doors and spikes and a smaller island, hard spikes every door it can, twice the
+spikes and fewer cycles), then up to three levels are built (the first from
+the seed itself) and the first whose score lands in the difficulty's band is
+kept, or the closest of the three. The score is printed with the level in the
+browser console.
 
 <kbd>G</kbd> builds a level from rooms (`src/core/roomgen.{hpp,cpp}`, the
 Spelunky approach): the map is cut into a grid of room slots, a random path of

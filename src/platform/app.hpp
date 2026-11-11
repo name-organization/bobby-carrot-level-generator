@@ -18,10 +18,13 @@ public:
     bool init(const std::string& assetRoot, bool headless);
     void shutdown();
 
-    // Plays the generated level a shared link names: ?seed=<seed>&size=<side>.
-    // Returns false, leaving the screen as it is, if the seed or the size is
-    // not one a generated level can have.
-    bool startFromSeed(unsigned int seed, int size);
+    // Plays the generated level a shared link names:
+    // ?seed=<seed>&size=<side>&difficulty=<easy|medium|hard>. A link without
+    // a difficulty is one from before difficulties: `rated` false, and it
+    // gives the level it always gave. Returns false, leaving the screen as it
+    // is, if the seed or the size is not one a generated level can have.
+    bool startFromSeed(unsigned int seed, int size, Difficulty difficulty = Difficulty::Medium,
+                       bool rated = true);
 
     // One display frame: drains events, runs as many fixed logic ticks as the
     // elapsed wall time calls for, then draws once.
@@ -38,9 +41,13 @@ public:
     void setViewMode(gfx::ViewMode m);
 
     // Actions behind the web page's buttons (and the G key). A generated
-    // level is generatedSize_ cells a side, which the B key changes; seed 0
-    // picks a random one.
-    void generateLevel(unsigned int seed = 0);
+    // level is generatedSize_ cells a side, which the B key changes, and of
+    // generatedDifficulty_, which the L key changes; seed 0 picks a random
+    // one. `rated` false: see startFromSeed().
+    void generateLevel(unsigned int seed = 0, bool rated = true);
+    // The difficulty buttons of the web page's New level dialog: the
+    // difficulty of the next generated level, nothing generated yet.
+    void setGeneratedDifficulty(Difficulty d) { generatedDifficulty_ = d; }
     // The G key and the "Generate level" button: the web page asks whether
     // to take a random seed or a given one, then calls generateLevel().
     // Without the page (native builds) it generates a random level at once.
@@ -102,6 +109,7 @@ private:
     bool reportedMuted_ = false;
     unsigned int reportedSeed_ = 0;  // seed last put into the page address
     int reportedSize_ = 0;
+    int reportedDifficulty_ = -1;  // -1: none in the address
     Mode mode_ = Mode::Normal;
     int selected_ = 0;
     int frameTick_ = 0;
@@ -111,6 +119,8 @@ private:
     static constexpr int kMaxWindowSide = 1024;
     // Side of generated maps, in cells: B cycles 16, 24, 32.
     int generatedSize_ = Grid::kClassic;
+    // Difficulty of generated maps: L cycles easy, medium, hard.
+    Difficulty generatedDifficulty_ = Difficulty::Medium;
     bool running_ = true;
     bool paused_ = false;
     bool headless_ = false;

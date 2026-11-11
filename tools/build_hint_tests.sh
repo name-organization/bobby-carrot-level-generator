@@ -20,7 +20,7 @@ FLAGS="-std=c++20 -O2 -Wall -Wextra -Wno-unused-parameter"
 # Same list as CORE_SOURCES in CMakeLists.txt.
 CORE="src/core/level.cpp src/core/rules.cpp src/core/player.cpp src/core/game.cpp
       src/core/generator.cpp src/core/roomgen.cpp src/core/autotile.cpp src/core/wfc.cpp
-      src/core/sat.cpp src/core/hint.cpp"
+      src/core/sat.cpp src/core/hint.cpp src/core/difficulty.cpp"
 
 mkdir -p "$OUT/cadical"
 if [ ! -f "$OUT/libcadical.a" ] || [ -n "$(find "$CAD" -newer "$OUT/libcadical.a" | head -1)" ]; then
