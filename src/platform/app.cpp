@@ -212,6 +212,34 @@ void App::reportScreen() {
 #endif
 }
 
+void App::reportLevelUrl() {
+    // The seed stays while the generated level is on screen, its "cleared"
+    // banner included; the main menu, the level list and the shipped levels
+    // have none.
+    const bool onLevel = screen_ == Screen::Play || screen_ == Screen::Cleared;
+    const bool generated = onLevel && game_.levelIndex() < 0 && game_.seed() != 0;
+    const unsigned int seed = generated ? game_.seed() : 0;
+    const int size = generated ? game_.generatedWidth() : 0;
+    if (seed == reportedSeed_ && size == reportedSize_) return;
+    reportedSeed_ = seed;
+    reportedSize_ = size;
+#ifdef __EMSCRIPTEN__
+    // replaceState, not pushState: a new level is no page to go back to
+    EM_ASM({
+        var u = new URL(window.location.href);
+        u.searchParams.delete('level');  // links from before seeds
+        if ($0 >>> 0) {
+            u.searchParams.set('seed', String($0 >>> 0));
+            u.searchParams.set('size', String($1));
+        } else {
+            u.searchParams.delete('seed');
+            u.searchParams.delete('size');
+        }
+        if (u.href !== window.location.href) window.history.replaceState(null, "", u.href);
+    }, seed, size);
+#endif
+}
+
 void App::rememberProgress() {
     const int slot = (mode_ == Mode::Normal ? 0 : 30) + game_.levelIndex();
     if (slot >= 0 && slot < 50) {
@@ -387,18 +415,10 @@ void App::onKey(SDL_Keycode key) {
         // export the generated level as a link: its seed and map size
         case SDLK_e: {
             if (screen_ != Screen::Play || game_.levelIndex() >= 0 || game_.seed() == 0) break;
-            const unsigned int seed = game_.seed();
-            const int size = game_.generatedWidth();
+            reportLevelUrl();  // the address already names this level
 #ifdef __EMSCRIPTEN__
             EM_ASM({
-                var u = new URL(window.location.href);
-                u.searchParams.delete('level');  // links from before seeds
-                u.searchParams.set('seed', String($0 >>> 0));
-                u.searchParams.set('size', String($1));
-                var href = u.toString();
-
-                window.history.replaceState(null, "", href);
-
+                var href = window.location.href;
                 if (navigator.clipboard && window.isSecureContext) {
                     navigator.clipboard.writeText(href).then(function() {
                         console.log("Copied: " + href);
@@ -408,9 +428,9 @@ void App::onKey(SDL_Keycode key) {
                 } else {
                     prompt("Copy link:", href);
                 }
-            }, seed, size);
+            });
 #else
-            std::printf("share: --seed=%u --size=%d\n", seed, size);
+            std::printf("share: --seed=%u --size=%d\n", game_.seed(), game_.generatedWidth());
 #endif
             break;
         }
@@ -643,6 +663,7 @@ void App::frame() {
 
     render();
     reportScreen();
+    reportLevelUrl();
 }
 
 }  // namespace bc::platform
