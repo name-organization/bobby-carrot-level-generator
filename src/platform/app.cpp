@@ -30,23 +30,6 @@ bool pointInRect(int x, int y, const SDL_Rect& r) {
     return x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h;
 }
 
-std::string toBase64Url(std::string s) {
-    std::replace(s.begin(), s.end(), '+', '-');
-    std::replace(s.begin(), s.end(), '/', '_');
-    while (!s.empty() && s.back() == '=') {
-        s.pop_back();
-    }
-    return s;
-}
-
-std::string fromBase64Url(std::string s) {
-    std::replace(s.begin(), s.end(), '-', '+');
-    std::replace(s.begin(), s.end(), '_', '/');
-    while (s.size() % 4 != 0) s.push_back('=');
-    return s;
-}
-
-
 // SDL_RenderWindowToLogical only exists from SDL 2.0.18, and the SDL2 port
 // bundled with older Emscripten releases predates it. Replicating the
 // letterbox maths keeps touch hit-testing working on every toolchain.
@@ -172,8 +155,8 @@ void App::startLevel(Mode mode, int index) {
     mixer_.stopMusic();
 }
 
-void App::generateLevel() {
-    if (!game_.loadProcedural(0, generatedSize_, generatedSize_)) {  // 0 picks a random seed
+void App::generateLevel(unsigned int seed) {
+    if (!game_.loadProcedural(seed, generatedSize_, generatedSize_)) {  // 0 picks a random seed
         std::fprintf(stderr, "cannot generate a level\n");
         return;
     }
@@ -181,6 +164,22 @@ void App::generateLevel() {
     held_ = Dir::None;
     pendingTap_ = Dir::None;
     mixer_.stopMusic();
+}
+
+void App::askToGenerate() {
+#ifdef __EMSCRIPTEN__
+    const bool asked = EM_ASM_INT({
+        if (!Module.askSeed) return 0;
+        Module.askSeed($0);
+        return 1;
+    }, generatedSize_);
+    if (asked) return;
+#endif
+    generateLevel();
+}
+
+bool App::isGeneratedSize(int size) {
+    return size == Grid::kClassic || size == Grid::kClassic + 8 || size == Grid::kMaxW;
 }
 
 void App::openLevelSelect() {
@@ -377,7 +376,7 @@ void App::onKey(SDL_Keycode key) {
             selected_ = 0;
             if (screen_ == Screen::Play) startLevel(mode_, 0);
             break;
-        case SDLK_g: generateLevel(); break;
+        case SDLK_g: askToGenerate(); break;
         case SDLK_b:
             // the size of generated maps: 16, 24, 32 cells a side, then back
             generatedSize_ = generatedSize_ >= Grid::kMaxW ? Grid::kClassic : generatedSize_ + 8;
@@ -385,32 +384,36 @@ void App::onKey(SDL_Keycode key) {
             if (screen_ == Screen::Play && game_.levelIndex() < 0) generateLevel();
             break;
         case SDLK_q: goToMainMenu(); break;
-        // export level as base64 in URL
+        // export the generated level as a link: its seed and map size
         case SDLK_e: {
-            std::string encoded = toBase64Url(game_.level().encode());
-            #ifdef __EMSCRIPTEN__
-                EM_ASM({
-                    var u = new URL(window.location.href);
-                    u.searchParams.set('level', UTF8ToString($0));
-                    var href = u.toString();
+            if (screen_ != Screen::Play || game_.levelIndex() >= 0 || game_.seed() == 0) break;
+            const unsigned int seed = game_.seed();
+            const int size = game_.generatedWidth();
+#ifdef __EMSCRIPTEN__
+            EM_ASM({
+                var u = new URL(window.location.href);
+                u.searchParams.delete('level');  // links from before seeds
+                u.searchParams.set('seed', String($0 >>> 0));
+                u.searchParams.set('size', String($1));
+                var href = u.toString();
 
-                    window.history.replaceState(null, "", href);
+                window.history.replaceState(null, "", href);
 
-                    if (navigator.clipboard && window.isSecureContext) {
-                        navigator.clipboard.writeText(href).then(function() {
-                            console.log("Copied: " + href);
-                        }, function(e) {
-                            console.warn("clipboard", e);
-                        });
-                    } else {
-                        prompt("Copy link:", href);
-                    }
-                }, encoded.c_str());
-            #else
-                std::fprintf(stderr, "share: %s\n", encoded.c_str());
-            #endif
-                break;
-            }
+                if (navigator.clipboard && window.isSecureContext) {
+                    navigator.clipboard.writeText(href).then(function() {
+                        console.log("Copied: " + href);
+                    }, function(e) {
+                        console.warn("clipboard", e);
+                    });
+                } else {
+                    prompt("Copy link:", href);
+                }
+            }, seed, size);
+#else
+            std::printf("share: --seed=%u --size=%d\n", seed, size);
+#endif
+            break;
+        }
         default: break;
     }
 }
@@ -608,21 +611,14 @@ void App::render() {
     gfx_.present();
 }
 
-void App::startFromEncoded(const std::string& base64url) {
-    Level level;
-    std::string err;
-    if (!level.decode(fromBase64Url(base64url), &err)) {
-        std::fprintf(stderr, "[bobby] bad ?level: %s\n", err.c_str());
-        return;
+bool App::startFromSeed(unsigned int seed, int size) {
+    if (seed == 0 || !isGeneratedSize(size)) {
+        std::fprintf(stderr, "[bobby] bad level link: seed %u, size %d\n", seed, size);
+        return false;
     }
-    if (!game_.loadLevel(level)) {
-        std::fprintf(stderr, "[bobby] loadDecoded refused level\n");
-        return;
-    }
-    screen_ = Screen::Play;
-    held_ = Dir::None;
-    pendingTap_ = Dir::None;
-    mixer_.stopMusic();
+    generatedSize_ = size;
+    generateLevel(seed);
+    return screen_ == Screen::Play;
 }
 
 void App::frame() {

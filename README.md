@@ -15,7 +15,8 @@ Game available at [http://localhost:8080](http://localhost:8080)
 
 1. Open [http://localhost:8080](http://localhost:8080).
 2. Choose a level:
-  - **Generate level** gives a new random level, or
+  - **Generate level** makes a new level: pick **Random seed**, or
+    **Enter seed** and type one (1 … 4294967295) to get that seed's level, or
   - **Select level** opens the list: click a level number. Levels unlock one
     by one, and progress is saved in the browser.
 3. Collect every carrot (in egg levels, walk over every patch of grass). The
@@ -37,9 +38,10 @@ also be clicked. All keys:
 | <kbd>Enter</kbd> | confirm, start the selected level |
 | <kbd>H</kbd> | show or hide the hint |
 | <kbd>R</kbd> | restart the level |
-| <kbd>G</kbd> | generate a new level |
+| <kbd>G</kbd> | generate a new level: random seed or a given one |
 | <kbd>B</kbd> | size of generated maps: 16, 24 or 32 cells a side (generates one in a generated level) |
 | <kbd>T</kbd> | carrot / egg levels (not in a generated level) |
+| <kbd>E</kbd> | copy a link to the generated level (its seed and map size) |
 | <kbd>Esc</kbd> | back: from a level to the level list, from the list to the main menu |
 | <kbd>Q</kbd> | main menu |
 | <kbd>F</kbd> | whole map / scrolling close-up view |
@@ -94,6 +96,18 @@ the original levels are 16 × 16. Files: `assets/v1/level/normal01.lvl` …
 table matches `kTileChars` in `src/core/tilechar.hpp`.
 
 ## Level generator
+
+### Sharing a generated level
+
+A generated level is fully given by its seed and map size: the generator uses
+its own random numbers (`src/core/rng.hpp`) and limits the solver by a count,
+not a time, so a seed gives the same level natively and in the browser.
+<kbd>E</kbd> puts both into the page address and copies it, e.g.
+`http://localhost:8080/?seed=123456&size=24`; opening that link starts the same
+level. `size` is 16, 24 or 32 and may be left out for 16. The native build
+prints `--seed=… --size=…` instead and takes the same two options on start.
+Levels made with <kbd>B</kbd> and the ones that follow a finished generated
+level get a random seed without asking.
 
 <kbd>G</kbd> builds a level from rooms (`src/core/roomgen.{hpp,cpp}`, the
 Spelunky approach): the map is cut into a grid of room slots, a random path of
