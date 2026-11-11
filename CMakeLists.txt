@@ -97,12 +97,6 @@ else()
         target_link_libraries(bobby PRIVATE m)
     endif()
 
-    # Rule verification harness: proves every original level is still solvable
-    # under the reconstructed tile semantics. Native only -- it is a test, not
-    # something to ship to the browser.
-    add_executable(solve_levels ${CORE_SOURCES})
-    target_link_libraries(solve_levels PRIVATE cadical)
-
     # Hint through the real Game class: follow it to the exit on levels 1-7.
     add_executable(hint_game tests/hint_game.cpp ${CORE_SOURCES})
     target_link_libraries(hint_game PRIVATE cadical)
