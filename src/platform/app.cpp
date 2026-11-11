@@ -5,7 +5,8 @@
 #include <cstdio>
 
 #ifdef __EMSCRIPTEN__
-#include <emscripten.h>
+    #include <emscripten/val.h>
+    #include <emscripten.h>
 #endif
 
 namespace bc::platform {
@@ -28,6 +29,23 @@ Dir keyToDir(SDL_Keycode k) {
 bool pointInRect(int x, int y, const SDL_Rect& r) {
     return x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h;
 }
+
+std::string toBase64Url(std::string s) {
+    std::replace(s.begin(), s.end(), '+', '-');
+    std::replace(s.begin(), s.end(), '/', '_');
+    while (!s.empty() && s.back() == '=') {
+        s.pop_back();
+    }
+    return s;
+}
+
+std::string fromBase64Url(std::string s) {
+    std::replace(s.begin(), s.end(), '-', '+');
+    std::replace(s.begin(), s.end(), '_', '/');
+    while (s.size() % 4 != 0) s.push_back('=');
+    return s;
+}
+
 
 // SDL_RenderWindowToLogical only exists from SDL 2.0.18, and the SDL2 port
 // bundled with older Emscripten releases predates it. Replicating the
@@ -190,6 +208,11 @@ void App::rememberProgress() {
 }
 
 void App::advanceLevel() {
+    // A generated level is followed by another generated one.
+    if (game_.levelIndex() < 0) {
+        generateLevel();
+        return;
+    }
     const int next = game_.levelIndex() + 1;
     if (next < Level::levelCount(mode_)) {
         startLevel(mode_, next);
@@ -336,6 +359,32 @@ void App::onKey(SDL_Keycode key) {
             break;
         case SDLK_g: generateLevel(); break;
         case SDLK_q: goToMainMenu(); break;
+        // export level as base64 in URL
+        case SDLK_e: {
+            std::string encoded = toBase64Url(game_.level().encode());
+            #ifdef __EMSCRIPTEN__
+                EM_ASM({
+                    var u = new URL(window.location.href);
+                    u.searchParams.set('level', UTF8ToString($0));
+                    var href = u.toString();
+
+                    window.history.replaceState(null, "", href);
+
+                    if (navigator.clipboard && window.isSecureContext) {
+                        navigator.clipboard.writeText(href).then(function() {
+                            console.log("Copied: " + href);
+                        }, function(e) {
+                            console.warn("clipboard", e);
+                        });
+                    } else {
+                        prompt("Copy link:", href);
+                    }
+                }, encoded.c_str());
+            #else
+                std::fprintf(stderr, "share: %s\n", encoded.c_str());
+            #endif
+                break;
+            }
         default: break;
     }
 }
@@ -530,6 +579,23 @@ void App::render() {
     }
 
     gfx_.present();
+}
+
+void App::startFromEncoded(const std::string& base64url) {
+    Level level;
+    std::string err;
+    if (!level.decode(fromBase64Url(base64url), &err)) {
+        std::fprintf(stderr, "[bobby] bad ?level: %s\n", err.c_str());
+        return;
+    }
+    if (!game_.loadLevel(level)) {
+        std::fprintf(stderr, "[bobby] loadDecoded refused level\n");
+        return;
+    }
+    screen_ = Screen::Play;
+    held_ = Dir::None;
+    pendingTap_ = Dir::None;
+    mixer_.stopMusic();
 }
 
 void App::frame() {

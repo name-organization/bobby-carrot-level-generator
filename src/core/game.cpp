@@ -78,6 +78,14 @@ void Game::loadLevel(const Level& level, const std::vector<Dir>& reference) {
     restart();
 }
 
+bool Game::loadLevel(Level level) {
+    level_ = std::move(level);
+    mode_ = Mode::Normal;
+    index_ = -1;
+    restart();
+    return true;
+}
+
 void Game::restart() {
     grid_     = level_.grid;
     progress_ = Progress{};

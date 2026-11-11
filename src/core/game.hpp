@@ -20,9 +20,7 @@ public:
     bool load(Mode mode, int index);
     // A new room-based level (roomgen.hpp); 0 picks a random seed.
     bool loadProcedural(unsigned int seed = 0);
-    // Plays a level that is not one of the shipped files, e.g. a generated
-    // one. `reference` is a winning solution as moves from the start, if known.
-    void loadLevel(const Level& level, const std::vector<Dir>& reference = {});
+    bool loadLevel(Level level);
     void restart();
 
     // Queue input for the next tick. `held` is a continuously pressed
