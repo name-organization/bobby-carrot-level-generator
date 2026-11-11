@@ -18,7 +18,10 @@ public:
     bool init(const std::string& assetRoot, bool headless);
     void shutdown();
 
-    void startFromEncoded(const std::string& base64Level);
+    // Plays the generated level a shared link names: ?seed=<seed>&size=<side>.
+    // Returns false, leaving the screen as it is, if the seed or the size is
+    // not one a generated level can have.
+    bool startFromSeed(unsigned int seed, int size);
 
     // One display frame: drains events, runs as many fixed logic ticks as the
     // elapsed wall time calls for, then draws once.
@@ -35,8 +38,15 @@ public:
     void setViewMode(gfx::ViewMode m);
 
     // Actions behind the web page's buttons (and the G key). A generated
-    // level is generatedSize_ cells a side, which the B key changes.
-    void generateLevel();
+    // level is generatedSize_ cells a side, which the B key changes; seed 0
+    // picks a random one.
+    void generateLevel(unsigned int seed = 0);
+    // The G key and the "Generate level" button: the web page asks whether
+    // to take a random seed or a given one, then calls generateLevel().
+    // Without the page (native builds) it generates a random level at once.
+    void askToGenerate();
+    // Sides a generated map can have: 16, 24 or 32 cells, as B cycles them.
+    static bool isGeneratedSize(int size);
     void openLevelSelect();
     void goToMainMenu();
     // Same as pressing a non-direction key, for the clickable key labels.

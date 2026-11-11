@@ -4,3 +4,5 @@ sdl-release*.zip
 .venv/
 __pycache__/
 build-hint/
+build/
+.cache/

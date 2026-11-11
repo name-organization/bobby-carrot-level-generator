@@ -25,6 +25,7 @@ bool Game::load(Mode mode, int index) {
     level_ = next;
     mode_  = mode;
     index_ = index;
+    rememberSeed(0, 0, 0);
     levelReference_.clear();
     restart();
     return true;
@@ -47,7 +48,9 @@ const wfc::Model* Game::wfcModel() {
 }
 
 bool Game::loadProcedural(unsigned int seed, int width, int height) {
-    if (seed == 0) seed = std::random_device{}();
+    // 0 stands for "random", so a drawn 0 is drawn again
+    std::random_device device;
+    while (seed == 0) seed = device();
     roomgen::Params params = roomgen::Params::forSize(width, height);
     params.model = wfcModel();
     const auto started = std::chrono::steady_clock::now();
@@ -59,6 +62,7 @@ bool Game::loadProcedural(unsigned int seed, int width, int height) {
         // the room generator gave nothing playable: fall back to the old one
         std::fprintf(stderr, "[gen] seed %u: room generator failed, using the random walk\n", seed);
         loadLevel(LevelGenerator::generateRandom(seed));
+        rememberSeed(seed, width, height);
         return true;
     }
     std::printf("[gen] seed %u, %dx%d: %zu rooms (%d by WFC), %s walls, %s after %d attempt(s), "
@@ -66,13 +70,21 @@ bool Game::loadProcedural(unsigned int seed, int width, int height) {
                 seed, width, height, gen.rooms.size(), gen.wfcRooms, roomgen::wallsName(gen.walls),
                 gen.verified ? "verified" : "NOT verified", gen.attempts, gen.solution.size(), ms);
     loadLevel(next, gen.solution);
+    rememberSeed(seed, width, height);
     return true;
+}
+
+void Game::rememberSeed(unsigned int seed, int width, int height) {
+    seed_ = seed;
+    genWidth_ = width;
+    genHeight_ = height;
 }
 
 bool Game::loadLevel(const Level& level, const std::vector<Dir>& reference) {
     level_ = level;
     mode_ = Mode::Normal;
     index_ = -1;  // not one of the shipped levels
+    rememberSeed(0, 0, 0);  // loadProcedural() sets it after this
     // a reference left over from the previous level must not reach this one
     levelReference_ = reference.empty() ? std::vector<Coord>{}
                                         : hint::cellsAlong(level_.start, reference);

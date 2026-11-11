@@ -7,7 +7,6 @@
 
 #include "tilechar.hpp"
 #include "tiles.hpp"
-#include "base64.h"
 
 namespace bc {
 namespace {
@@ -199,72 +198,6 @@ std::string Level::pathFor(Mode mode, int index, const std::string& root) {
     std::snprintf(name, sizeof(name), "%s/level/%s%02d.lvl", root.c_str(),
                   mode == Mode::Normal ? "normal" : "egg", index + 1);
     return std::string(name);
-}
-
-// The payload is the level's cells row by row, one byte each. A classic
-// 16x16 level is exactly those 256 bytes, as the first codes were; any other
-// size starts with two bytes, width and height. 2 + w * h is never 256 for
-// sizes up to 32x32 (254 = 2 * 127), so the two read apart by length alone.
-std::string Level::encode() const {
-    std::string payload;
-    const bool classic = grid.w == Grid::kClassic && grid.h == Grid::kClassic;
-    payload.reserve(static_cast<std::size_t>(grid.w * grid.h + 2));
-    if (!classic) {
-        payload += static_cast<char>(grid.w);
-        payload += static_cast<char>(grid.h);
-    }
-    for (int y = 0; y < grid.h; ++y)
-        for (int x = 0; x < grid.w; ++x) payload += static_cast<char>(grid.at(x, y));
-    return base64_encode(payload);
-}
-
-bool Level::decode(const std::string& base64Str, std::string* error) {
-    std::string decoded;
-    try {
-        decoded = base64_decode(base64Str);
-    } catch (const std::exception& e) {
-        fail(error, std::string("base64: ") + e.what());
-        return false;
-    }
-
-    Grid parsed{};
-    std::size_t offset = 0;
-    if (decoded.size() == static_cast<std::size_t>(Grid::kClassic * Grid::kClassic)) {
-        parsed.w = parsed.h = Grid::kClassic;
-    } else {
-        const int w = decoded.size() >= 2 ? static_cast<std::uint8_t>(decoded[0]) : 0;
-        const int h = decoded.size() >= 2 ? static_cast<std::uint8_t>(decoded[1]) : 0;
-        if (w < 1 || w > Grid::kMaxW || h < 1 || h > Grid::kMaxH ||
-            decoded.size() != static_cast<std::size_t>(2 + w * h)) {
-            char buf[120];
-            std::snprintf(buf, sizeof(buf),
-                          "level payload: %zu bytes is neither a 16x16 level nor a sized one",
-                          decoded.size());
-            fail(error, buf);
-            return false;
-        }
-        parsed.w = w;
-        parsed.h = h;
-        offset = 2;
-    }
-
-    for (int y = 0; y < parsed.h; ++y) {
-        for (int x = 0; x < parsed.w; ++x) {
-            const auto tile = static_cast<std::uint8_t>(decoded[offset++]);
-            if (tile >= kTileCount) {
-                char buf[80];
-                std::snprintf(buf, sizeof(buf), "level payload: unknown tile %u at %d,%d",
-                              static_cast<unsigned>(tile), x, y);
-                fail(error, buf);
-                return false;
-            }
-            parsed.at(x, y) = tile;
-        }
-    }
-
-    grid = parsed;
-    rescan();
-    return true;
 }
 
 }  // namespace bc
