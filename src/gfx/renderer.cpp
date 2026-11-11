@@ -62,20 +62,6 @@ void Renderer::blit(const Texture& t, const SDL_Rect* src, int x, int y) {
     SDL_RenderCopy(r_, t.handle, src, &dst);
 }
 
-void Renderer::updateCamera(const Game& game) {
-    if (view_ == ViewMode::FullMap) {
-        camX_ = camY_ = 0;
-        return;
-    }
-    const int px = static_cast<int>(game.player().fx() * kTileSize);
-    const int py = static_cast<int>(game.player().fy() * kTileSize);
-    const Grid& g = game.grid();
-    camX_ = std::clamp(px - kHandheldW / 2 + kTileSize / 2, 0,
-                       std::max(0, g.w * kTileSize - kHandheldW));
-    camY_ = std::clamp(py - kHandheldH / 2 + kTileSize / 2, 0,
-                       std::max(0, g.h * kTileSize - kHandheldH));
-}
-
 void Renderer::drawTiles(const Game& game, int frameTick) {
     const Texture& tileset = tex_.get("tileset");
     const int animFrame = (frameTick * 16 / kTicksPerSecond) % 4;  // 4 frames at 16 fps
@@ -84,10 +70,8 @@ void Renderer::drawTiles(const Game& game, int frameTick) {
     for (int y = 0; y < game.grid().h; ++y) {
         for (int x = 0; x < game.grid().w; ++x) {
             const std::uint8_t tile = game.grid().at(x, y);
-            const int dx = x * kTileSize - camX_;
-            const int dy = y * kTileSize - camY_;
-            if (dx <= -kTileSize || dy <= -kTileSize) continue;
-            if (dx >= logicalWidth() || dy >= logicalHeight()) continue;
+            const int dx = x * kTileSize;
+            const int dy = y * kTileSize;
 
             if (isConveyor(tile)) {
                 SDL_Rect src{animFrame * kTileSize, 0, kTileSize, kTileSize};
@@ -112,14 +96,14 @@ void Renderer::drawPlayer(const Game& game) {
     if (p.state() == Player::State::Death) {
         const int frame = std::min(kDeathFrames - 1, p.stateTick() * kDeathFrames / kFadeTicks);
         SDL_Rect src{frame * kDeathW, 0, kDeathW, kDeathH};
-        const int x = static_cast<int>(kTileSize * (fx + 0.5f)) - kDeathW / 2 - camX_;
-        const int y = static_cast<int>(kTileSize * (fy + 0.5f)) - (kDeathH - kTileSize / 2) - camY_;
+        const int x = static_cast<int>(kTileSize * (fx + 0.5f)) - kDeathW / 2;
+        const int y = static_cast<int>(kTileSize * (fy + 0.5f)) - (kDeathH - kTileSize / 2);
         blit(tex_.get("bobby_death"), &src, x, y);
         return;
     }
 
-    const int x = static_cast<int>(kTileSize * (fx + 0.5f)) - kWalkW / 2 - camX_;
-    const int y = static_cast<int>(kTileSize * (fy + 0.5f)) - (kWalkH - kTileSize / 2) - camY_;
+    const int x = static_cast<int>(kTileSize * (fx + 0.5f)) - kWalkW / 2;
+    const int y = static_cast<int>(kTileSize * (fy + 0.5f)) - (kWalkH - kTileSize / 2);
 
     const char* texName = walkTexture(p.facing());
     int frame = 0;
@@ -187,18 +171,17 @@ void Renderer::drawHud(const Game& game) {
         ++slot;
     }
 
-    // Timer, top left.
+    // Timer, top left, right of the web page's Back button and level with it.
     const int secs = game.elapsedSeconds();
     int m = std::min(99, secs / 60);
     int s = secs / 60 > 99 ? 99 : secs % 60;
     const int glyphs[5] = {m / 10, m % 10, kGlyphColon, s / 10, s % 10};
-    for (int i = 0; i < 5; ++i) drawGlyph(glyphs[i], 4 + i * kGlyphW, 4);
+    for (int i = 0; i < 5; ++i) drawGlyph(glyphs[i], timerX_ + i * kGlyphW, timerY_);
 }
 
 void Renderer::drawGame(const Game& game, int frameTick) {
-    updateCamera(game);
     drawTiles(game, frameTick);
-    drawHintOverlay(r_, game, camX_, camY_);  // HINT OVERLAY (temporary)
+    drawHintOverlay(r_, game);  // HINT OVERLAY (temporary)
     drawPlayer(game);
     drawHud(game);
 }

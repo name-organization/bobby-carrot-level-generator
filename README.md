@@ -15,19 +15,33 @@ Game available at [http://localhost:8080](http://localhost:8080)
 
 1. Open [http://localhost:8080](http://localhost:8080).
 2. Choose a level:
-  - **Generate level** makes a new level: pick **Random seed**, or
+  - **Generate level** makes a new level: pick the map size (**16 × 16**,
+    **24 × 24** or **32 × 32**) and the difficulty (**Easy**, **Medium** or
+    **Hard**, the chosen ones in orange; <kbd>↑</kbd> <kbd>↓</kbd> go from row
+    to row, <kbd>←</kbd> <kbd>→</kbd> along the row, <kbd>Enter</kbd> or a
+    click chooses), then **Random seed**, or
     **Enter seed** and type one (1 … 4294967295) to get that seed's level, or
   - **Select level** opens the list: click a level number. Levels unlock one
-    by one, and progress is saved in the browser.
-3. Collect every carrot (in egg levels, walk over every patch of grass). The
-   counter in the top right shows how many are left.
+    by one, and progress is saved in the browser. The button under the list
+    (or <kbd>↓</kbd> below the last row and <kbd>Enter</kbd>) switches between
+    the carrot and the egg levels.
+3. Over the board it says what you play: "Original level 5", or "Generated
+   level" with its map size, difficulty and seed. Collect every carrot (in egg
+   levels, walk over every patch of grass). The counter in the top right shows
+   how many are left.
 4. Move with the arrow keys; on a phone, swipe.
 5. Stuck? Press <kbd>H</kbd> to see the path to the exit.
 6. Board turned red? The level can't be finished any more: press <kbd>R</kbd>
    to restart. If Bobby falls into a hole, the level restarts by itself.
 7. Walk onto the exit when it opens.
 8. The next level starts by itself.
-9. Press <kbd>Q</kbd> to go back to the start page.
+9. The **←** button in the top left corner of the board, or <kbd>Esc</kbd>, goes
+   back: from an original level to the level list, from a generated level to
+   the New level window (to change the size or the difficulty; Back there
+   returns to the level), from the list to the start page. On the pages, the
+   level list and the ending it can also be picked with the arrows (it is above
+   everything else: <kbd>↑</kbd> from the top) and pressed with <kbd>Enter</kbd>.
+   <kbd>Q</kbd> goes to the start page from anywhere.
 10. **Settings** on the start page, or <kbd>V</kbd> anywhere, sets the music
     and sound volume and mutes the game. Opened over a level, it pauses the
     level, which goes on where it was when Settings closes. The settings are
@@ -44,17 +58,14 @@ listed under the game; each of them can also be clicked. All keys:
 | Key | Action |
 |---|---|
 | <kbd>↑</kbd> <kbd>↓</kbd> <kbd>←</kbd> <kbd>→</kbd> | move / choose; in Settings <kbd>←</kbd> <kbd>→</kbd> set the selected volume |
-| <kbd>Enter</kbd> | confirm, start the selected level |
+| <kbd>Enter</kbd> | confirm, start the selected level, or switch carrot / egg levels on the list's button |
 | <kbd>H</kbd> | show or hide the hint |
 | <kbd>R</kbd> | restart the level |
-| <kbd>G</kbd> | generate a new level: random seed or a given one |
-| <kbd>B</kbd> | size of generated maps: 16, 24 or 32 cells a side (generates one in a generated level) |
-| <kbd>T</kbd> | carrot / egg levels (not in a generated level) |
-| <kbd>E</kbd> | copy a link to the generated level (its seed and map size) |
-| <kbd>Esc</kbd> | back: from a level to the level list, from the list to the main menu; closes Settings (back to the level) and New level |
+| <kbd>G</kbd> | in a generated level: another one of the same map size and difficulty, with a random seed |
+| <kbd>E</kbd> | in a generated level: copy its url (its seed, map size and difficulty) |
+| <kbd>Esc</kbd> | back, like the **←** button: from an original level to the level list; from a generated level to the New level window (the level pauses under it); from the list to the main menu; closes Settings and New level, back to where they were opened |
 | <kbd>Q</kbd> | main menu |
-| <kbd>F</kbd> | whole map / scrolling close-up view |
-| <kbd>M</kbd> | sound on / off |
+| <kbd>M</kbd> | sound on / off (not listed under the game) |
 | <kbd>V</kbd> | sound settings: music and sound volume, mute (pauses the level) |
 
 ## `.lvl` format
@@ -109,17 +120,42 @@ table matches `kTileChars` in `src/core/tilechar.hpp`.
 
 ### Sharing a generated level
 
-A generated level is fully given by its seed and map size: the generator uses
-its own random numbers (`src/core/rng.hpp`) and limits the solver by a count,
-not a time, so a seed gives the same level natively and in the browser.
-<kbd>E</kbd> puts both into the page address and copies it, e.g.
-`http://localhost:8080/?seed=123456&size=24`; opening that link starts the same
-level. `size` is 16, 24 or 32 and may be left out for 16. The native build
-prints `--seed=… --size=…` instead and takes the same two options on start.
-Levels made with <kbd>B</kbd> and the ones that follow a finished generated
-level get a random seed without asking.
+A generated level is fully given by its seed, map size and difficulty: the
+generator uses its own random numbers (`src/core/rng.hpp`), limits the solver by
+a count, not a time, and scores levels in integers, so a seed gives the same
+level natively and in the browser. <kbd>E</kbd> puts all three into the page
+address and copies it, e.g.
+`http://localhost:8080/?seed=123456&size=24&difficulty=hard`; opening that link
+starts the same level. `size` is 16, 24 or 32 and may be left out for 16.
+`difficulty` is `easy`, `medium` or `hard`; a link without one is a link from
+before difficulties and gives the level it always gave (the first medium level
+of the seed, not picked by its score). The native build prints
+`--seed=… --size=… --difficulty=…` instead and takes the same options on start.
+Levels made with <kbd>G</kbd> and the ones that follow a finished generated
+level keep the map size and difficulty and get a random seed without asking.
 
-<kbd>G</kbd> builds a level from rooms (`src/core/roomgen.{hpp,cpp}`, the
+### Difficulty
+
+A generated level is easy, medium or hard. `src/core/difficulty.{hpp,cpp}`
+scores a level from 0 to 100 out of three measures, each compared with what is
+typical of a map of its size (so the difficulties mean the same on 16, 24 and
+32 cells):
+
+- **cover**: moves of the winning solution the generator verified the level
+  with, per walkable cell -- how many times over Bobby walks the island;
+- **spikes**: spikes per 100 walkable cells;
+- **naive**: how often a player who always goes for the nearest carrot cuts
+  himself off with a spike (out of 20 tries); it counts twice.
+
+Below 38 is easy, 62 and up is hard, medium lies between. A difficulty first
+sets the generator's parameters (`roomgen::Params::forSize`: easy has few spike
+doors and spikes and a smaller island, hard spikes every door it can, twice the
+spikes and fewer cycles), then up to three levels are built (the first from
+the seed itself) and the first whose score lands in the difficulty's band is
+kept, or the closest of the three. The score is printed with the level in the
+browser console.
+
+The generator builds a level from rooms (`src/core/roomgen.{hpp,cpp}`, the
 Spelunky approach): the map is cut into a grid of room slots, a random path of
 rooms runs from the start to the exit, side rooms hang off it, and more doors
 between neighbouring rooms close cycles, so that most rooms open into two to
@@ -135,7 +171,7 @@ rooms it separates, and room by room (each with its walls) if that fails. The
 layout pins the doors, the cells they lead to, the start and the exit; a
 one-cell wall between two rooms may come out hedge or fence. A room WFC cannot
 fill (about 4%) gets fixed patterns (carrot fields, rows, pillars) instead. The
-model is learned from `assets/v1/level` on the first <kbd>G</kbd>.
+model is learned from `assets/v1/level` with the first generated level.
 
 Hedge and fence pieces are then picked from their neighbours by
 `src/core/autotile.{hpp,cpp}`, whose tables were read off the 50 original
@@ -149,7 +185,7 @@ seed and the time it took are printed to the browser console, and the seed gives
 the same level in the bench.
 
 The generator works on a `Canvas` of any size (`src/core/canvas.hpp`); up to
-32 × 32 it is verified and played. <kbd>B</kbd> picks 16, 24 or 32 cells a side;
+32 × 32 it is verified and played. The New level window picks 16, 24 or 32 cells a side;
 `roomgen::Params::forSize` sets the room size (4, 5, 6), the carrot weight and
 the spike target for each, with what they measured.
 

@@ -47,14 +47,17 @@ const wfc::Model* Game::wfcModel() {
     return wfcModel_.empty() ? nullptr : &wfcModel_;
 }
 
-bool Game::loadProcedural(unsigned int seed, int width, int height) {
+bool Game::loadProcedural(unsigned int seed, int width, int height, Difficulty difficulty,
+                          bool rated) {
     // 0 stands for "random", so a drawn 0 is drawn again
     std::random_device device;
     while (seed == 0) seed = device();
-    roomgen::Params params = roomgen::Params::forSize(width, height);
+    if (!rated) difficulty = Difficulty::Medium;  // the only one there was
+    roomgen::Params params = roomgen::Params::forSize(width, height, difficulty);
     params.model = wfcModel();
     const auto started = std::chrono::steady_clock::now();
-    const roomgen::Result gen = roomgen::generate(params, seed);
+    const roomgen::Result gen =
+        roomgen::generateRated(params, seed, difficulty, rated ? difficulty::kTries : 1);
     const double ms = std::chrono::duration<double, std::milli>(
                           std::chrono::steady_clock::now() - started).count();
     Level next;
@@ -62,22 +65,32 @@ bool Game::loadProcedural(unsigned int seed, int width, int height) {
         // the room generator gave nothing playable: fall back to the old one
         std::fprintf(stderr, "[gen] seed %u: room generator failed, using the random walk\n", seed);
         loadLevel(LevelGenerator::generateRandom(seed));
-        rememberSeed(seed, width, height);
+        rememberSeed(seed, width, height, difficulty, rated);
         return true;
     }
-    std::printf("[gen] seed %u, %dx%d: %zu rooms (%d by WFC), %s walls, %s after %d attempt(s), "
-                "%zu moves, %.1f ms\n",
-                seed, width, height, gen.rooms.size(), gen.wfcRooms, roomgen::wallsName(gen.walls),
-                gen.verified ? "verified" : "NOT verified", gen.attempts, gen.solution.size(), ms);
+    std::printf("[gen] seed %u, %dx%d, %s: %zu rooms (%d by WFC), %s walls, %s after %d attempt(s), "
+                "%zu moves, score %d (%s; cover %d, spikes %d.%02d per 100 cells, naive loses "
+                "%d%%), %d of %d tries, %.1f ms\n",
+                seed, width, height, rated ? difficulty::name(difficulty) : "medium, unrated",
+                gen.rooms.size(), gen.wfcRooms, roomgen::wallsName(gen.walls),
+                gen.verified ? "verified" : "NOT verified", gen.attempts, gen.solution.size(),
+                gen.rating.score, difficulty::name(difficulty::band(gen.rating.score)),
+                gen.rating.cover, gen.rating.spikes / 100, gen.rating.spikes % 100,
+                gen.rating.naive, gen.tries, rated ? difficulty::kTries : 1, ms);
     loadLevel(next, gen.solution);
-    rememberSeed(seed, width, height);
+    rememberSeed(seed, width, height, difficulty, rated);
+    genRating_ = gen.rating;
     return true;
 }
 
-void Game::rememberSeed(unsigned int seed, int width, int height) {
+void Game::rememberSeed(unsigned int seed, int width, int height, Difficulty difficulty,
+                        bool rated) {
     seed_ = seed;
     genWidth_ = width;
     genHeight_ = height;
+    genDifficulty_ = difficulty;
+    genRated_ = rated;
+    genRating_ = difficulty::Rating{};
 }
 
 bool Game::loadLevel(const Level& level, const std::vector<Dir>& reference) {
