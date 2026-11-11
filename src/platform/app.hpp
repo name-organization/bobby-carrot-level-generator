@@ -75,6 +75,7 @@ private:
     void playEventSounds(unsigned events);
     void rememberProgress();
     void reportScreen();
+    void reportLevelUrl();
 
     SDL_Window* window_ = nullptr;
     SDL_Renderer* renderer_ = nullptr;
@@ -87,6 +88,8 @@ private:
     Screen screen_ = Screen::Title;
     int reportedScreen_ = -1;  // last screen told to the web page
     bool reportedGenerated_ = false;
+    unsigned int reportedSeed_ = 0;  // seed last put into the page address
+    int reportedSize_ = 0;
     Mode mode_ = Mode::Normal;
     int selected_ = 0;
     int frameTick_ = 0;
