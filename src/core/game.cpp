@@ -149,7 +149,17 @@ void Game::answerHint(bool rejoinOnly) {
     hint::Options options;
     options.useSolver = !rejoinOnly;
     const auto started = std::chrono::steady_clock::now();
-    const hint::Result result = hint::compute(grid_, pos, reference_, options);
+    hint::Result result = hint::compute(grid_, pos, reference_, options);
+    if (rejoinOnly && result.verdict == hint::Verdict::Unknown) {
+        // The remembered route is broken -- typically Bobby stepped on a spike
+        // the route still needed, or the way back to it crosses one. Ask the
+        // solver now instead of hiding the hint: it finds a new route or says
+        // the level is lost (the board turns red). The budget is kept small so
+        // that a step never stalls; past it the hint hides as before.
+        hint::Options reroute;
+        reroute.conflictBudget = kRerouteConflicts;
+        result = hint::compute(grid_, pos, reference_, reroute);
+    }
     const double ms = std::chrono::duration<double, std::milli>(
                           std::chrono::steady_clock::now() - started).count();
 
@@ -158,7 +168,7 @@ void Game::answerHint(bool rejoinOnly) {
                 result.moves.size(), ms);
 
     if (rejoinOnly && result.verdict == hint::Verdict::Unknown) {
-        // the remembered route is broken: hide the hint until H is pressed
+        // not even the solver could tell in time: hide the hint until H is pressed
         hintShown_ = false;
         hintPath_.clear();
         return;

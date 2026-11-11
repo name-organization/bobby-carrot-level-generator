@@ -76,13 +76,19 @@ public:
     // The last answer, or nullptr if there is none for the current position.
     // Moving along the suggested path shortens it. Moving off it re-routes
     // back to the remembered path without the solver; if that route is
-    // broken, the hint disappears until the next requestHint().
+    // broken (a spike it needed has fired, say), the solver is asked with a
+    // small budget, and only if that runs out does the hint disappear until
+    // the next requestHint().
     // Its `moves` always start at Bobby's current cell, in step with hintPath().
     const hint::Result* hint() const { return hintShown_ ? &hint_ : nullptr; }
     // Cells still ahead on the suggested path, the next one first.
     const std::vector<Coord>& hintPath() const { return hintPath_; }
 
 private:
+    // SAT conflicts the solver may spend re-routing after a step off the hint
+    // path, against 400000 for a hint asked with H.
+    static constexpr long long kRerouteConflicts = 50000;
+
     void answerHint(bool rejoinOnly);
     void followHint();
     // Learned from the original carrot levels on first use; nullptr if they
