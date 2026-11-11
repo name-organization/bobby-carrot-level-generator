@@ -171,12 +171,12 @@ void Renderer::drawHud(const Game& game) {
         ++slot;
     }
 
-    // Timer, top left, right of the web page's Back button.
+    // Timer, top left, right of the web page's Back button and level with it.
     const int secs = game.elapsedSeconds();
     int m = std::min(99, secs / 60);
     int s = secs / 60 > 99 ? 99 : secs % 60;
     const int glyphs[5] = {m / 10, m % 10, kGlyphColon, s / 10, s % 10};
-    for (int i = 0; i < 5; ++i) drawGlyph(glyphs[i], hudLeft_ + i * kGlyphW, 4);
+    for (int i = 0; i < 5; ++i) drawGlyph(glyphs[i], timerX_ + i * kGlyphW, timerY_);
 }
 
 void Renderer::drawGame(const Game& game, int frameTick) {

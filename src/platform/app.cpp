@@ -194,6 +194,12 @@ bool App::isGeneratedSize(int size) {
     return size == Grid::kClassic || size == Grid::kClassic + 8 || size == Grid::kMaxW;
 }
 
+void App::toggleLevelMode() {
+    if (screen_ != Screen::Select) return;
+    mode_ = mode_ == Mode::Normal ? Mode::Egg : Mode::Normal;
+    selected_ = Level::levelCount(mode_);  // the switch stays selected
+}
+
 void App::openLevelSelect() {
     screen_ = Screen::Select;
     selected_ = 0;
@@ -299,6 +305,27 @@ void App::reportLevelUrl() {
 #endif
 }
 
+// The level list's carrot / egg switch under the grid and the Back button
+// over its corner are buttons of the page: it is told which levels the list
+// shows and which of the two is selected, if one is. On the ending, Back can
+// be selected too.
+void App::reportLevelList() {
+    const int mode = screen_ == Screen::Select ? (mode_ == Mode::Normal ? 1 : 2) : 0;
+    const bool switchSelected = mode != 0 && selected_ >= Level::levelCount(mode_);
+    const bool backSelected = (mode != 0 && selected_ < 0) ||
+                              (screen_ == Screen::End && endBackSelected_);
+    if (mode == reportedListMode_ && switchSelected == reportedSwitchSelected_ &&
+        backSelected == reportedBackSelected_)
+        return;
+    reportedListMode_ = mode;
+    reportedSwitchSelected_ = switchSelected;
+    reportedBackSelected_ = backSelected;
+#ifdef __EMSCRIPTEN__
+    EM_ASM({ if (Module.onLevelList) Module.onLevelList($0, !!$1, !!$2); },
+           mode, switchSelected, backSelected);
+#endif
+}
+
 // The page writes over the board what is being played: "Original level 5" or
 // "Generated level" with its size, difficulty and seed.
 void App::reportLevelInfo() {
@@ -355,6 +382,7 @@ void App::advanceLevel() {
         startLevel(mode_, next);
     } else {
         screen_ = Screen::End;
+        endBackSelected_ = false;
         mixer_.stopMusic();
         mixer_.playSound("end", 0.8f);
     }
@@ -384,16 +412,32 @@ void App::onDirection(Dir d, bool pressed) {
     if (!pressed) return;
 
     if (screen_ == Screen::Select) {
+        // selected_ == count is the carrot / egg switch under the levels:
+        // Down from the bottom of the grid reaches it, Up leaves it.
+        // selected_ == -1 is the page's Back button over the top left corner:
+        // Up from the top row reaches it, Down leaves it.
         const int count = Level::levelCount(mode_);
+        if (selected_ >= count) {
+            if (d == Dir::Up) selected_ = count - 1;
+            return;
+        }
+        if (selected_ < 0) {
+            if (d == Dir::Down) selected_ = 0;
+            return;
+        }
         int next = selected_;
         switch (d) {
             case Dir::Left:  next -= 1; break;
             case Dir::Right: next += 1; break;
-            case Dir::Up:    next -= 6; break;
-            case Dir::Down:  next += 6; break;
+            case Dir::Up:    next = next - 6 >= 0 ? next - 6 : -1; break;
+            case Dir::Down:  next = next + 6 < count ? next + 6 : count; break;
             default: break;
         }
-        if (next >= 0 && next < count) selected_ = next;
+        if (next >= -1 && next <= count && !(next < 0 && d != Dir::Up)) selected_ = next;
+    } else if (screen_ == Screen::End) {
+        // Up selects the page's Back button, Down lets go of it
+        if (d == Dir::Up) endBackSelected_ = true;
+        if (d == Dir::Down) endBackSelected_ = false;
     } else if (screen_ == Screen::Title) {
         if (d == Dir::Left || d == Dir::Right) {
             mode_ = mode_ == Mode::Normal ? Mode::Egg : Mode::Normal;
@@ -407,6 +451,14 @@ void App::onConfirm() {
             openLevelSelect();
             break;
         case Screen::Select: {
+            if (selected_ < 0) {  // the Back button
+                onBack();
+                break;
+            }
+            if (selected_ >= Level::levelCount(mode_)) {
+                toggleLevelMode();
+                break;
+            }
             const int unlocked = mode_ == Mode::Normal ? save_.unlockedNormal : save_.unlockedEgg;
             if (selected_ < unlocked) startLevel(mode_, selected_);
             break;
@@ -416,7 +468,9 @@ void App::onConfirm() {
             advanceLevel();
             break;
         case Screen::End:
-            screen_ = Screen::Title;
+            // Back (selected with Up) and "continue" both lead to the title
+            if (endBackSelected_) onBack();
+            else screen_ = Screen::Title;
             break;
         case Screen::Play:
             break;
@@ -497,15 +551,6 @@ void App::onKey(SDL_Keycode key) {
         case SDLK_p:
             if (screen_ == Screen::Play && game_.levelIndex() > 0)
                 startLevel(mode_, game_.levelIndex() - 1);
-            break;
-        case SDLK_t:
-            // A generated level has no carrot/egg counterpart to switch to.
-            if ((screen_ == Screen::Play || screen_ == Screen::Cleared) &&
-                game_.levelIndex() < 0)
-                break;
-            mode_ = mode_ == Mode::Normal ? Mode::Egg : Mode::Normal;
-            selected_ = 0;
-            if (screen_ == Screen::Play) startLevel(mode_, 0);
             break;
         case SDLK_g:
             // in a generated level only: another one of the same size and
@@ -772,6 +817,7 @@ void App::frame() {
     reportAudio();
     reportLevelUrl();
     reportLevelInfo();
+    reportLevelList();
 }
 
 }  // namespace bc::platform

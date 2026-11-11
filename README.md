@@ -17,10 +17,14 @@ Game available at [http://localhost:8080](http://localhost:8080)
 2. Choose a level:
   - **Generate level** makes a new level: pick the map size (**16 × 16**,
     **24 × 24** or **32 × 32**) and the difficulty (**Easy**, **Medium** or
-    **Hard**; <kbd>←</kbd> <kbd>→</kbd> change the row that is selected), then **Random seed**,
-    or **Enter seed** and type one (1 … 4294967295) to get that seed's level, or
+    **Hard**, the chosen ones in orange; <kbd>↑</kbd> <kbd>↓</kbd> go from row
+    to row, <kbd>←</kbd> <kbd>→</kbd> along the row, <kbd>Enter</kbd> or a
+    click chooses), then **Random seed**, or
+    **Enter seed** and type one (1 … 4294967295) to get that seed's level, or
   - **Select level** opens the list: click a level number. Levels unlock one
-    by one, and progress is saved in the browser.
+    by one, and progress is saved in the browser. The button under the list
+    (or <kbd>↓</kbd> below the last row and <kbd>Enter</kbd>) switches between
+    the carrot and the egg levels.
 3. Over the board it says what you play: "Original level 5", or "Generated
    level" with its map size, difficulty and seed. Collect every carrot (in egg
    levels, walk over every patch of grass). The counter in the top right shows
@@ -31,11 +35,13 @@ Game available at [http://localhost:8080](http://localhost:8080)
    to restart. If Bobby falls into a hole, the level restarts by itself.
 7. Walk onto the exit when it opens.
 8. The next level starts by itself.
-9. **← Back** in the top left corner of the board, or <kbd>Esc</kbd>, goes
+9. The **←** button in the top left corner of the board, or <kbd>Esc</kbd>, goes
    back: from an original level to the level list, from a generated level to
    the New level window (to change the size or the difficulty; Back there
-   returns to the level), from the list to the start page. <kbd>Q</kbd> goes
-   to the start page from anywhere.
+   returns to the level), from the list to the start page. On the pages, the
+   level list and the ending it can also be picked with the arrows (it is above
+   everything else: <kbd>↑</kbd> from the top) and pressed with <kbd>Enter</kbd>.
+   <kbd>Q</kbd> goes to the start page from anywhere.
 10. **Settings** on the start page, or <kbd>V</kbd> anywhere, sets the music
     and sound volume and mutes the game. Opened over a level, it pauses the
     level, which goes on where it was when Settings closes. The settings are
@@ -52,15 +58,14 @@ listed under the game; each of them can also be clicked. All keys:
 | Key | Action |
 |---|---|
 | <kbd>↑</kbd> <kbd>↓</kbd> <kbd>←</kbd> <kbd>→</kbd> | move / choose; in Settings <kbd>←</kbd> <kbd>→</kbd> set the selected volume |
-| <kbd>Enter</kbd> | confirm, start the selected level |
+| <kbd>Enter</kbd> | confirm, start the selected level, or switch carrot / egg levels on the list's button |
 | <kbd>H</kbd> | show or hide the hint |
 | <kbd>R</kbd> | restart the level |
 | <kbd>G</kbd> | in a generated level: another one of the same map size and difficulty, with a random seed |
-| <kbd>E</kbd> | in a generated level: copy a link to it (its seed, map size and difficulty) |
-| <kbd>T</kbd> | carrot / egg levels (on the level list and in an original level) |
-| <kbd>Esc</kbd> | back, like **← Back**: from an original level to the level list; from a generated level to the New level window (the level pauses under it); from the list to the main menu; closes Settings and New level, back to where they were opened |
+| <kbd>E</kbd> | in a generated level: copy its url (its seed, map size and difficulty) |
+| <kbd>Esc</kbd> | back, like the **←** button: from an original level to the level list; from a generated level to the New level window (the level pauses under it); from the list to the main menu; closes Settings and New level, back to where they were opened |
 | <kbd>Q</kbd> | main menu |
-| <kbd>M</kbd> | sound on / off |
+| <kbd>M</kbd> | sound on / off (not listed under the game) |
 | <kbd>V</kbd> | sound settings: music and sound volume, mute (pauses the level) |
 
 ## `.lvl` format

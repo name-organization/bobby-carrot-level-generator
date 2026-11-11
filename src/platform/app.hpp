@@ -37,8 +37,8 @@ public:
     gfx::Renderer& gfx() { return gfx_; }
 
     // The web page's Back button covers the top left corner of the board:
-    // the timer starts this many logical pixels from the left edge.
-    void setHudLeft(int x) { gfx_.setHudLeft(x); }
+    // the timer goes right of it, level with it (logical pixels).
+    void setTimerAt(int x, int y) { gfx_.setTimerAt(x, y); }
 
     // Actions behind the web page's buttons and the G key. A generated level
     // is generatedSize_ cells a side and of generatedDifficulty_: those of the
@@ -57,6 +57,9 @@ public:
     // Sides a generated map can have: 16, 24 or 32 cells.
     static bool isGeneratedSize(int size);
     void openLevelSelect();
+    // The level list's switch between the carrot and the egg levels (the page's
+    // button under the list, or Enter on it).
+    void toggleLevelMode();
     void goToMainMenu();
     // Same as pressing a non-direction key, for the clickable key labels.
     void pressKey(SDL_Keycode key);
@@ -94,6 +97,7 @@ private:
     void reportAudio();
     void reportLevelUrl();
     void reportLevelInfo();
+    void reportLevelList();
     // A generated level is on screen (playing it or its "cleared" banner):
     // where G makes another one and Esc opens the New level window.
     bool onGeneratedLevel() const;
@@ -121,6 +125,11 @@ private:
     // What the page shows above the board: kind (0 none, 1 shipped carrot
     // level, 2 shipped egg level, 3 generated), level number, size,
     // difficulty and seed; -1 kind: not told yet.
+    int reportedListMode_ = -1;  // 0 no list, 1 carrot levels, 2 egg levels
+    bool reportedSwitchSelected_ = false;
+    bool reportedBackSelected_ = false;
+    // The ending: Up selected the page's Back button.
+    bool endBackSelected_ = false;
     int reportedKind_ = -1;
     int reportedNumber_ = 0;
     unsigned int reportedInfoSeed_ = 0;

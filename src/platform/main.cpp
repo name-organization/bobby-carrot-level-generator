@@ -105,11 +105,13 @@ EMSCRIPTEN_KEEPALIVE void bc_generate_level(unsigned int seed, int size, int dif
     if (difficulty < 0 || difficulty > 2) difficulty = 1;
     g_app.generateLevel(seed, size, static_cast<bc::Difficulty>(difficulty));
 }
-// The Back button over the board: where the timer starts, in logical pixels.
-EMSCRIPTEN_KEEPALIVE void bc_set_hud_left(int x) { g_app.setHudLeft(x); }
+// The Back button over the board: where the timer goes, in logical pixels.
+EMSCRIPTEN_KEEPALIVE void bc_set_timer_at(int x, int y) { g_app.setTimerAt(x, y); }
 // The start page's "Generate level": opens the New level window.
 EMSCRIPTEN_KEEPALIVE void bc_ask_to_generate() { g_app.askToGenerate(); }
 EMSCRIPTEN_KEEPALIVE void bc_select_level()   { g_app.openLevelSelect(); }
+// The button under the level list: carrot levels <-> egg levels.
+EMSCRIPTEN_KEEPALIVE void bc_toggle_level_mode() { g_app.toggleLevelMode(); }
 // key is an SDL keycode: the lower-case letter's code, or 27 for Escape.
 EMSCRIPTEN_KEEPALIVE void bc_press_key(int key) { g_app.pressKey(key); }
 // The Settings page: volumes in percent, 0..100; muted 0 or 1.

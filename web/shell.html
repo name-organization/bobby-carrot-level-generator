@@ -7,14 +7,21 @@
   <title>Bobby Carrot</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>🥕</text></svg>">
   <style>
-    :root { --bg: #11150f; --panel: #1b2117; --ink: #d8e3c8; --dim: #6f7d63; }
+    :root { --bg: #11150f; --panel: #1b2117; --ink: #d8e3c8; --dim: #6f7d63;
+            --accent: #c7792f; --chosen: #f0b46a; --btn: #263020; --btn-hi: #33402a;
+            --line: #36422c; }
     * { box-sizing: border-box; }
     html, body {
       margin: 0; height: 100%; background: var(--bg); color: var(--ink);
       font: 14px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
       overscroll-behavior: none; touch-action: none;
     }
-    body { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 16px; }
+    /* Centred while it fits; in a short window it starts at the top and the
+       page scrolls (auto margins, unlike justify-content, never push the top
+       off the screen). */
+    body { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 16px; }
+    #level-title { margin-top: auto; }
+    #footers { margin-bottom: auto; }
     #stage { position: relative; display: flex; align-items: center; justify-content: center; }
     canvas {
       display: block; background: #000;
@@ -29,24 +36,36 @@
     }
     #loader.hidden { display: none; }
     #bar { width: 180px; height: 6px; background: #2b3425; border-radius: 3px; overflow: hidden; margin-top: 10px; }
-    #bar > i { display: block; height: 100%; width: 0%; background: #c7792f; transition: width .2s; }
+    #bar > i { display: block; height: 100%; width: 0%; background: var(--accent); transition: width .2s; }
+    .hidden { display: none !important; }
+    .invisible { visibility: hidden; }
+
+    /* What is being played, over the board; its room is kept on every screen
+       so that the board does not jump. */
+    #level-title { text-align: center; line-height: 1.3; }
+    #level-kind { font-size: 16px; font-weight: bold; letter-spacing: .04em; }
+    #level-params { color: var(--dim); margin-top: 5px; }
+
+    /* Key hints under the board, a group per row. On the pages and the level
+       list: the arrows in the first row, Enter and Esc in the second. The
+       room of four rows is kept on every screen, so that the board does not
+       jump. */
+    #footers { min-height: 116px; margin-top: 14px; display: flex; flex-direction: column; align-items: center; }
     footer { color: var(--dim); text-align: center; max-width: 560px;
       display: flex; flex-direction: column; align-items: center; gap: 8px; }
-    kbd, .key { background: #263020; border: 1px solid #36422c; border-bottom-width: 2px;
+    footer .row { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 18px; }
+    footer .row > span { white-space: nowrap; }
+    kbd, .key { background: var(--btn); border: 1px solid var(--line); border-bottom-width: 2px;
       border-radius: 4px; padding: 0 5px; color: var(--ink); }
     /* Key labels that also work as buttons: clicking one presses that key. */
     .key { font: inherit; line-height: inherit; margin: 0; cursor: pointer; }
-    .key:hover { background: #33402a; border-color: #c7792f; }
+    .key:hover { background: var(--btn-hi); border-color: var(--accent); }
     .key:active { transform: translateY(1px); border-bottom-width: 1px; }
-    @media (max-width: 640px) { footer .desktop-only { display: none; } }
-    @media (min-width: 641px) { footer .mobile-only { display: none; } }
-    /* Key hints under the game, one group per row. A key and its label wrap
-       to the next line together. */
-    footer .row { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 18px; }
-    footer .row > span { white-space: nowrap; }
+    @media (max-width: 640px) { .desktop-only { display: none !important; } }
+    @media (min-width: 641px) { .mobile-only { display: none !important; } }
 
-    /* Pages over the canvas: the start page, Settings and New level. Opaque,
-       so nothing under them shows through. */
+    /* Pages over the board: the start page, Settings, New level. Opaque, so
+       nothing under them shows through. */
     .page {
       position: absolute; inset: 0; display: flex; flex-direction: column;
       align-items: center; justify-content: center; gap: 12px; padding: 20px;
@@ -57,71 +76,69 @@
     #menu h1 { margin: 0 0 10px; font-size: 26px; letter-spacing: .04em; }
     #menu h1 span { display: block; font-size: 40px; line-height: 1.2; }
     .btn {
-      font: inherit; color: var(--ink); background: #263020; cursor: pointer;
-      border: 1px solid #36422c; border-bottom-width: 3px; border-radius: 6px;
+      font: inherit; color: var(--ink); background: var(--btn); cursor: pointer;
+      border: 1px solid var(--line); border-bottom-width: 3px; border-radius: 6px;
       padding: 8px 18px; min-width: 200px;
     }
-    .btn:hover, .btn:focus-visible, .btn.selected { background: #33402a; border-color: #c7792f; outline: none; }
+    .btn:hover, .btn:focus-visible, .btn.selected { background: var(--btn-hi); border-color: var(--accent); outline: none; }
     /* On a page one control is highlighted at a time, the selected one,
        whether it was picked with the keys or the mouse. */
-    .page .btn:not(.selected) { background: #263020; border-color: #36422c; }
+    .page .btn:not(.selected) { background: var(--btn); border-color: var(--line); }
     .btn:active { transform: translateY(1px); border-bottom-width: 2px; }
-    .hidden { display: none !important; }
 
-    /* Settings: a row per volume, then Mute and Back. */
+    /* Settings: a row per volume, then Mute. */
     .slider {
       display: flex; align-items: center; gap: 12px; width: 280px; max-width: 100%;
-      padding: 6px 12px; border: 1px solid #36422c; border-bottom-width: 3px;
-      border-radius: 6px; background: #263020; cursor: pointer;
+      padding: 6px 12px; border: 1px solid var(--line); border-bottom-width: 3px;
+      border-radius: 6px; background: var(--btn); cursor: pointer;
     }
-    .slider.selected { background: #33402a; border-color: #c7792f; }
+    .slider.selected { background: var(--btn-hi); border-color: var(--accent); }
     .slider > span { width: 6ch; text-align: left; }
-    .slider input { flex: 1; min-width: 0; margin: 0; accent-color: #c7792f; cursor: pointer; outline: none; }
+    .slider input { flex: 1; min-width: 0; margin: 0; accent-color: var(--accent); cursor: pointer; outline: none; }
     .slider output { width: 4ch; text-align: right; }
 
-    /* Asked before every level made with G or "Generate level": a random
-       seed or a given one. */
-    #seed-dialog .note { color: var(--dim); }
+    /* New level: the map size and the difficulty, a row of buttons each with
+       the chosen one in orange; then a random seed or a given one. */
     #seed-choice, #seed-form { display: flex; flex-direction: column; align-items: center; gap: 12px; }
-    #seed-input {
-      font: inherit; color: var(--ink); background: var(--bg); text-align: center;
-      border: 1px solid #36422c; border-radius: 6px; padding: 8px 12px; width: 200px;
-    }
-    #seed-input:focus, #seed-input.selected { border-color: #c7792f; outline: none; }
-    #seed-error { color: #e0866b; min-height: 1.5em; }
-    /* Map size and difficulty of the level: a row of buttons each, the chosen
-       one marked. */
     .choice { display: flex; gap: 8px; justify-content: center; }
     .choice .btn { min-width: 0; padding: 6px 12px; }
-    .choice .btn[aria-pressed="true"] { color: #f0b46a; text-decoration: underline; }
-    /* What is being played, over the board. */
-    #level-title { text-align: center; line-height: 1.3; }
-    #level-kind { font-size: 16px; font-weight: bold; letter-spacing: .04em; }
-    #level-params { color: var(--dim); }
-    /* Back, in the top left corner of the board, over the pages too. Its
-       width is fixed: the timer of the board starts right of it
-       (layoutBack). */
-    #btn-back {
-      position: absolute; z-index: 5; width: 84px; padding: 4px 0;
-      font: inherit; color: var(--ink); cursor: pointer;
-      background: rgba(27, 33, 23, .85); border: 1px solid #36422c;
-      border-bottom-width: 2px; border-radius: 6px;
+    .choice .btn[aria-pressed="true"] { color: var(--chosen); font-weight: bold; }
+    #seed-input {
+      font: inherit; color: var(--ink); background: var(--bg); text-align: center;
+      border: 1px solid var(--line); border-bottom-width: 3px; border-radius: 6px;
+      padding: 8px 12px; width: 200px;
     }
-    #btn-back:hover, #btn-back:focus-visible { border-color: #c7792f; outline: none; }
-    #btn-back:active { transform: translateY(1px); border-bottom-width: 1px; }
+    #seed-input:focus, #seed-input.selected { border-color: var(--accent); outline: none; }
+    #seed-error { color: #e0866b; min-height: 1.5em; }
+
+    /* Back, in the top left corner of the board at the height of the timer,
+       over the pages too (layoutBack places it and moves the timer right):
+       a dark bold arrow on a light button. */
+    #btn-back {
+      position: absolute; z-index: 5; min-width: 0; padding: 0 12px;
+      font-size: 22px; font-weight: 900; line-height: 1.4;
+      color: var(--btn); background: var(--ink);
+    }
+    #btn-back:hover, #btn-back:focus-visible, #btn-back.selected {
+      background: #eef5e0; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent);
+    }
+    /* The level list's switch between carrot and egg levels, under the grid. */
+    #btn-level-mode { position: absolute; left: 50%; top: 66%; transform: translateX(-50%); }
+    #btn-level-mode:active { transform: translateX(-50%) translateY(1px); }
   </style>
 </head>
 <body>
 
 <!-- What is being played, written by onLevelInfo: "Original level 5", or
      "Generated level" over its size, difficulty and seed. -->
-<header id="level-title" class="hidden">
-  <div id="level-kind"></div>
-  <div id="level-params" class="note"></div>
+<header id="level-title" class="invisible">
+  <div id="level-kind">&nbsp;</div>
+  <div id="level-params">&nbsp;</div>
 </header>
 
 <div id="stage">
   <canvas id="canvas" tabindex="-1" oncontextmenu="event.preventDefault()"></canvas>
+  <button class="btn hidden" id="btn-level-mode" type="button" tabindex="-1">Egg levels</button>
   <div id="menu" class="page hidden">
     <h1><span>🥕</span>Bobby Carrot</h1>
     <button class="btn" id="btn-generate" type="button">Generate level</button>
@@ -137,7 +154,6 @@
       <input id="vol-sound" type="range" min="0" max="100" step="10" value="100">
       <output id="vol-sound-value">100%</output></label>
     <button class="btn" id="btn-mute" type="button" aria-pressed="false">Mute: off</button>
-    <button class="btn" id="btn-settings-back" type="button">Back</button>
   </div>
   <div id="seed-dialog" class="page hidden" role="dialog" aria-labelledby="seed-title">
     <h2 id="seed-title">New level</h2>
@@ -147,25 +163,25 @@
       <button class="btn" id="btn-size-32" type="button" aria-pressed="false">32 × 32</button>
     </div>
     <div id="seed-difficulty" class="choice" role="group" aria-label="difficulty">
-      <button class="btn diff" id="btn-diff-easy" type="button" aria-pressed="false">Easy</button>
-      <button class="btn diff" id="btn-diff-medium" type="button" aria-pressed="true">Medium</button>
-      <button class="btn diff" id="btn-diff-hard" type="button" aria-pressed="false">Hard</button>
+      <button class="btn" id="btn-diff-easy" type="button" aria-pressed="false">Easy</button>
+      <button class="btn" id="btn-diff-medium" type="button" aria-pressed="true">Medium</button>
+      <button class="btn" id="btn-diff-hard" type="button" aria-pressed="false">Hard</button>
     </div>
     <div id="seed-choice">
       <button class="btn" id="btn-seed-random" type="button">Random seed</button>
       <button class="btn" id="btn-seed-fixed" type="button">Enter seed</button>
     </div>
     <form id="seed-form" class="hidden" autocomplete="off" novalidate>
-      <input id="seed-input" type="text" inputmode="numeric" pattern="[0-9]*"
+      <!-- 10 digits: the longest seed is 4294967295 -->
+      <input id="seed-input" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="10"
              placeholder="seed" aria-label="seed" spellcheck="false">
-      <div id="seed-error"></div>
       <button class="btn" id="btn-seed-go" type="submit">Generate</button>
-      <button class="btn" id="btn-seed-back" type="button">Back</button>
+      <div id="seed-error"></div>
     </form>
   </div>
   <!-- Back, on every screen but the start page: what Esc does there. -->
-  <button id="btn-back" class="hidden" type="button" tabindex="-1" aria-label="Back (Esc)"
-          title="Back (Esc)">← Back</button>
+  <button class="btn hidden" id="btn-back" type="button" tabindex="-1" aria-label="Back (Esc)"
+          title="Back (Esc)">←</button>
   <div id="loader">
     <div>
       <div id="status">loading…</div>
@@ -174,50 +190,61 @@
   </div>
 </div>
 
-<!-- Keys of the page over the game (start page, Settings, New level). Each
-     label can be clicked. data-pages lists the pages an item is shown on. -->
+<div id="footers">
+<!-- Keys of the page over the board (start page, Settings, New level): the
+     arrows in the first row, Enter and Esc in the second. Each label can be
+     clicked. data-pages lists the pages an item is shown on. -->
 <footer id="nav-footer" class="hidden">
-  <div class="row" id="nav-keys">
+  <div class="row">
     <span><button class="key" type="button" tabindex="-1" data-nav="up">↑</button><button class="key" type="button" tabindex="-1" data-nav="down">↓</button> choose</span>
     <span data-pages="settings"><button class="key" type="button" tabindex="-1" data-nav="left">←</button><button class="key" type="button" tabindex="-1" data-nav="right">→</button> volume</span>
-    <span data-pages="seed"><button class="key" type="button" tabindex="-1" data-nav="left">←</button><button class="key" type="button" tabindex="-1" data-nav="right">→</button> size / difficulty</span>
+    <span data-pages="seed seed-form"><button class="key" type="button" tabindex="-1" data-nav="left">←</button><button class="key" type="button" tabindex="-1" data-nav="right">→</button> size / difficulty</span>
+  </div>
+  <div class="row">
     <span><button class="key" type="button" tabindex="-1" data-nav="enter">Enter</button> confirm</span>
-    <span data-pages="seed seed-form settings"><button class="key" type="button" tabindex="-1" data-nav="back">Esc</button> <span id="nav-back-label">cancel</span></span>
+    <span data-pages="seed seed-form settings"><button class="key" type="button" tabindex="-1" data-nav="back">Esc</button> <span id="nav-back-label">back</span></span>
   </div>
 </footer>
 
 <footer id="game-footer" class="hidden">
   <!-- data-key is the SDL keycode the label stands for: the letter's code,
        13 = Enter, 27 = Esc, 1073741903..1073741906 = Right, Left, Down, Up.
-       data-show lists the screens an item is shown on: play (built-in level),
-       gen (generated level), select (level select), end (ending).
-       Rows: playing the level; this level and the next ones; going back;
-       sound. -->
+       data-show lists the screens an item is shown on: play (original level),
+       gen (generated level), select (level list), end (ending).
+       In a level the rows are: playing it; the generated levels; going back;
+       sound. On the level list: the arrows, then Enter and Esc. -->
   <div class="row">
     <span data-show="play gen"><button class="key" type="button" tabindex="-1" data-key="1073741906">↑</button><button class="key" type="button" tabindex="-1" data-key="1073741905">↓</button><button class="key" type="button" tabindex="-1" data-key="1073741904">←</button><button class="key" type="button" tabindex="-1" data-key="1073741903">→</button> move</span>
-    <span data-show="select"><button class="key" type="button" tabindex="-1" data-key="1073741906">↑</button><button class="key" type="button" tabindex="-1" data-key="1073741905">↓</button><button class="key" type="button" tabindex="-1" data-key="1073741904">←</button><button class="key" type="button" tabindex="-1" data-key="1073741903">→</button> choose</span>
-    <span data-show="select"><button class="key" type="button" tabindex="-1" data-key="13">Enter</button> play</span>
-    <span data-show="end"><button class="key" type="button" tabindex="-1" data-key="13">Enter</button> continue</span>
     <span data-show="play gen"><button class="key" type="button" tabindex="-1" data-key="104">H</button> show hint</span>
     <span data-show="play gen"><button class="key" type="button" tabindex="-1" data-key="114">R</button> restart</span>
   </div>
   <div class="row">
     <span data-show="gen"><button class="key" type="button" tabindex="-1" data-key="103">G</button> another level</span>
-    <span data-show="gen"><button class="key" type="button" tabindex="-1" data-key="101">E</button> copy link to level</span>
-    <span data-show="play select"><button class="key" type="button" tabindex="-1" data-key="116">T</button> carrot / egg levels</span>
+    <span data-show="gen"><button class="key" type="button" tabindex="-1" data-key="101">E</button> copy level url</span>
   </div>
   <div class="row">
     <span data-show="play"><button class="key" type="button" tabindex="-1" data-key="27">Esc</button> level list</span>
-    <span data-show="gen"><button class="key" type="button" tabindex="-1" data-key="27">Esc</button> new level: size, difficulty</span>
-    <span data-show="select end"><button class="key" type="button" tabindex="-1" data-key="27">Esc</button> main menu</span>
+    <span data-show="gen"><button class="key" type="button" tabindex="-1" data-key="27">Esc</button> level generation settings</span>
     <span data-show="play gen"><button class="key" type="button" tabindex="-1" data-key="113">Q</button> main menu</span>
   </div>
   <div class="row">
-    <span data-show="play gen select end"><button class="key" type="button" tabindex="-1" data-key="109">M</button> mute</span>
-    <span data-show="play gen select end"><button class="key" type="button" tabindex="-1" data-key="118">V</button> sound settings</span>
+    <span data-show="play gen"><button class="key" type="button" tabindex="-1" data-key="118">V</button> sound settings</span>
   </div>
-  <span class="mobile-only">swipe to move, tap the arrows, tap to confirm</span>
+  <div class="row">
+    <span data-show="end"><button class="key" type="button" tabindex="-1" data-key="1073741906">↑</button><button class="key" type="button" tabindex="-1" data-key="1073741905">↓</button> choose</span>
+    <span data-show="select"><button class="key" type="button" tabindex="-1" data-key="1073741906">↑</button><button class="key" type="button" tabindex="-1" data-key="1073741905">↓</button><button class="key" type="button" tabindex="-1" data-key="1073741904">←</button><button class="key" type="button" tabindex="-1" data-key="1073741903">→</button> choose</span>
+  </div>
+  <div class="row">
+    <span data-show="select"><button class="key" type="button" tabindex="-1" data-key="13">Enter</button> play / switch</span>
+    <span data-show="end"><button class="key" type="button" tabindex="-1" data-key="13">Enter</button> continue</span>
+    <span data-show="select end"><button class="key" type="button" tabindex="-1" data-key="27">Esc</button> main menu</span>
+  </div>
+  <div class="row">
+    <span data-show="end"><button class="key" type="button" tabindex="-1" data-key="118">V</button> sound settings</span>
+  </div>
+  <span class="mobile-only" data-show="play gen">swipe to move, tap the arrows</span>
 </footer>
+</div>
 
 <script>
   const canvas = document.getElementById('canvas');
@@ -230,6 +257,7 @@
   const navFooter = document.getElementById('nav-footer');
   const $ = (id) => document.getElementById(id);
   const backButton = $('btn-back');
+  const levelModeButton = $('btn-level-mode');
 
   // Screen numbers match App::Screen in src/platform/app.hpp.
   const SCREEN_TITLE = 0;
@@ -245,9 +273,12 @@
   // Every page (start page, Settings, New level) is a list of controls. One of
   // them is selected and highlighted: Up/Down or the mouse pick it, Enter or a
   // click uses it, Esc goes back. The keys under the game do the same.
+  // `rows` (New level): the controls as rows on the screen; Up / Down then go
+  // to the row above / below, to the same column where it has as many.
   function makePage(name, items, opts = {}) {
-    const page = { name, items, index: 0, back: opts.back || null,
-                   passKeys: opts.passKeys || [], backLabel: opts.backLabel || '' };
+    const page = { name, items, index: 0, back: opts.back || null, rows: opts.rows || null,
+                   passKeys: opts.passKeys || [], backLabel: opts.backLabel || 'back',
+                   column: 0 };
     // The highlighted box: a slider's whole row, otherwise the control itself.
     const box = (el) => el.closest('.slider') || el;
     page.current = () => items[page.index];
@@ -256,18 +287,32 @@
       items.forEach((el, k) => box(el).classList.toggle('selected', k === page.index));
       if (document.activeElement !== page.current()) page.current().focus({ preventScroll: true });
     };
-    page.move = (d) => page.select(page.index + d);
+    // Row and column of the selected control, for pages with rows.
+    page.where = () => {
+      const r = page.rows.findIndex((row) => row.includes(page.current()));
+      return [r, page.rows[r].indexOf(page.current())];
+    };
+    page.move = (d) => {
+      if (!page.rows) { page.select(page.index + d); return; }
+      const [r, c] = page.where();
+      if (page.rows[r].length > 1) page.column = c;
+      const to = page.rows[Math.min(page.rows.length - 1, Math.max(0, r + d))];
+      page.select(items.indexOf(to[Math.min(to.length - 1, to.length > 1 ? page.column : 0)]));
+    };
     page.confirm = () => {
       const el = page.current();
       if (el.type === 'range') page.move(1);           // nothing to press: next
       else if (el.tagName === 'INPUT') el.form.requestSubmit();
       else el.click();
     };
+    // Back belongs to several pages: only the page on top follows it.
     items.forEach((el, k) => {
       box(el).addEventListener('mousemove', (e) => {
-        if (pointerMoved(e) && k !== page.index) page.select(k);
+        if (pointerMoved(e) && activePage() === page && k !== page.index) page.select(k);
       });
-      el.addEventListener('focus', () => { if (k !== page.index) page.select(k); });
+      el.addEventListener('focus', () => {
+        if (activePage() === page && k !== page.index) page.select(k);
+      });
     });
     return page;
   }
@@ -285,7 +330,6 @@
   // V (settings) and M (mute) still reach the game from here.
   const menuPage = makePage('menu', [$('btn-generate'), $('btn-select'), $('btn-settings')],
                             { passKeys: ['v', 'V', 'm', 'M'] });
-  // Through the G key, so the game asks for the seed with the map size.
   $('btn-generate').addEventListener('click', () => {
     if (Module._bc_ask_to_generate) Module._bc_ask_to_generate();
   });
@@ -303,9 +347,9 @@
   const soundSlider = $('vol-sound');
   const muteButton = $('btn-mute');
   let muted = false;
-  const settingsPage = makePage('settings',
-      [musicSlider, soundSlider, muteButton, $('btn-settings-back')],
-      { back: closeSettings, backLabel: 'back', passKeys: ['v', 'V', 'm', 'M'] });
+  // Back first: Up from Music, Down from Mute reach it
+  const settingsPage = makePage('settings', [backButton, musicSlider, soundSlider, muteButton],
+      { back: closeSettings, passKeys: ['v', 'V', 'm', 'M'] });
 
   function showAudio(music, sound, isMuted) {
     musicSlider.value = music;
@@ -331,7 +375,6 @@
   musicSlider.addEventListener('input', sendAudio);
   soundSlider.addEventListener('input', sendAudio);
   muteButton.addEventListener('click', () => { muted = !muted; sendAudio(); });
-  $('btn-settings-back').addEventListener('click', closeSettings);
 
   // Opened from the start page or, with V, over a level: the level is paused
   // underneath and goes on where it was once the page is closed.
@@ -340,7 +383,7 @@
   }
   function openSettings() {
     settings.classList.remove('hidden');
-    settingsPage.index = 0;
+    settingsPage.index = settingsPage.items.indexOf(musicSlider);
     setPaused(true);
     refresh();
   }
@@ -356,12 +399,12 @@
     else closeSettings();
   }
 
-  // --- seed dialog ----------------------------------------------------------
-  // Opened by the game (App::askToGenerate) through Module.askSeed(size,
-  // difficulty). The size and difficulty buttons pick them for the level
-  // (Left / Right change the row the selection is on; on the other buttons,
-  // the difficulty); "Random seed" generates at once; "Enter seed" shows a
-  // field for one.
+  // --- New level ------------------------------------------------------------
+  // Opened by the game (App::askToGenerate, Esc in a generated level) through
+  // Module.askSeed(size, difficulty). The size and difficulty buttons pick
+  // them for the level: Left / Right step through the row the selection is
+  // on and Enter chooses; "Random seed" generates at once; "Enter seed" swaps
+  // the two buttons for a field and Generate, the rows staying as they are.
   const MAX_SEED = 4294967295;  // seeds are 32-bit, 0 means random
   const seedDialog = $('seed-dialog');
   const seedChoice = $('seed-choice');
@@ -375,39 +418,34 @@
   // Difficulties in the order of bc::Difficulty: 0 easy, 1 medium, 2 hard.
   const diffButtons = [$('btn-diff-easy'), $('btn-diff-medium'), $('btn-diff-hard')];
   let difficulty = 1;
-  // "Random seed" on the page, after the size and difficulty buttons
-  const SEED_RANDOM_INDEX = sizeButtons.length + diffButtons.length;
-  const seedPage = makePage('seed', [...sizeButtons, ...diffButtons,
-                                     $('btn-seed-random'), $('btn-seed-fixed')],
-                            { back: closeSeedDialog, backLabel: 'cancel' });
+  // Back is the top row: Up from the sizes reaches it
+  const seedRows = [[backButton], sizeButtons, diffButtons, [$('btn-seed-random')], [$('btn-seed-fixed')]];
+  const seedPage = makePage('seed', seedRows.flat(),
+                            { rows: seedRows, back: closeSeedDialog, backLabel: 'cancel' });
+  const formRows = [[backButton], sizeButtons, diffButtons, [seedInput], [$('btn-seed-go')]];
+  const seedFormPage = makePage('seed-form', formRows.flat(),
+                                { rows: formRows, back: showSeedChoice });
 
   function showSize(size) {
     sizeIndex = Math.max(0, SIZES.indexOf(size));
     sizeButtons.forEach((b, k) => b.setAttribute('aria-pressed', String(k === sizeIndex)));
   }
-  // The choice goes to the game only with Generate, so that Esc leaves the
-  // next level (G, a finished level) as it was.
-  function setSize(k) { showSize(SIZES[k]); }
   function showDifficulty(d) {
     difficulty = d;
     diffButtons.forEach((b, k) => b.setAttribute('aria-pressed', String(k === d)));
   }
-  function setDifficulty(d) { showDifficulty(d); }
-  // Left / Right on the New level page: the next size while a size button is
-  // selected, otherwise the next easier or harder difficulty.
-  function stepChoice(dir) {
-    const onSize = sizeButtons.includes(seedPage.current());
-    const buttons = onSize ? sizeButtons : diffButtons;
-    const now = onSize ? sizeIndex : difficulty;
-    const k = Math.min(buttons.length - 1, Math.max(0, now + dir));
-    if (k === now) return;
-    if (onSize) setSize(k); else setDifficulty(k);
-    if (buttons.includes(seedPage.current())) seedPage.select(seedPage.items.indexOf(buttons[k]));
+  // The choice goes to the game only with Generate, so that Esc leaves the
+  // next level (G, a finished level) as it was.
+  sizeButtons.forEach((b, k) => b.addEventListener('click', () => showSize(SIZES[k])));
+  diffButtons.forEach((b, k) => b.addEventListener('click', () => showDifficulty(k)));
+  // Left / Right on a size or difficulty button: the next one in the row is
+  // selected; Enter (or a click) makes it the chosen one.
+  function stepChoice(page, dir) {
+    const row = page.rows.find((r) => r.includes(page.current()));
+    if (!row || row.length < 2) return;
+    const k = Math.min(row.length - 1, Math.max(0, row.indexOf(page.current()) + dir));
+    page.select(page.items.indexOf(row[k]));
   }
-  sizeButtons.forEach((b, k) => b.addEventListener('click', () => setSize(k)));
-  diffButtons.forEach((b, k) => b.addEventListener('click', () => setDifficulty(k)));
-  const seedFormPage = makePage('seed-form', [seedInput, $('btn-seed-go'), $('btn-seed-back')],
-                                { back: showSeedChoice, backLabel: 'back' });
 
   function showSeedChoice() {
     seedForm.classList.add('hidden');
@@ -415,7 +453,7 @@
     refresh();
   }
 
-  // Over a level (N), the level stands still while the window is open.
+  // Over a level the level stands still while the window is open.
   function openSeedDialog(size, d) {
     setPaused(true);
     showSize(size);
@@ -423,7 +461,8 @@
     seedInput.value = '';
     seedError.textContent = '';
     seedDialog.classList.remove('hidden');
-    seedPage.index = SEED_RANDOM_INDEX;
+    seedPage.index = seedPage.items.indexOf($('btn-seed-random'));
+    seedPage.column = 1;  // Up from the centred buttons: the middle one
     showSeedChoice();
   }
 
@@ -446,11 +485,11 @@
     seedChoice.classList.add('hidden');
     seedForm.classList.remove('hidden');
     seedError.textContent = '';
-    seedFormPage.index = 0;
+    seedFormPage.index = seedFormPage.items.indexOf(seedInput);
+    seedFormPage.column = seedPage.column;
     refresh();
     seedInput.select();
   });
-  $('btn-seed-back').addEventListener('click', showSeedChoice);
   seedInput.addEventListener('input', () => { seedError.textContent = ''; });
   seedForm.addEventListener('submit', (e) => {
     e.preventDefault();
@@ -458,7 +497,7 @@
     const seed = /^[0-9]{1,10}$/.test(text) ? Number(text) : NaN;
     if (!(seed >= 1 && seed <= MAX_SEED)) {
       seedError.textContent = 'a whole number from 1 to ' + MAX_SEED;
-      seedFormPage.select(0);
+      seedFormPage.select(seedFormPage.items.indexOf(seedInput));
       return;
     }
     generateWithSeed(seed);
@@ -484,20 +523,32 @@
     // Back: on every screen but the start page, once the game is loaded
     backButton.classList.toggle('hidden',
                                 page === menuPage || !loader.classList.contains('hidden'));
+    levelModeButton.classList.toggle('hidden', !!page || listMode === 0);
     if (page) {
       navFooter.querySelectorAll('[data-pages]').forEach((item) => {
         item.classList.toggle('hidden', !item.dataset.pages.split(' ').includes(page.name));
       });
       $('nav-back-label').textContent = page.backLabel;
       // Phones tap the buttons; the keys of the start page are for desktops.
-      $('nav-keys').classList.toggle('desktop-only', page === menuPage);
+      navFooter.classList.toggle('desktop-only', page === menuPage);
       page.select(page.index);
     } else {
+      backButton.classList.toggle('selected', listBackSelected);
       canvas.focus();
     }
+    relayout();
   }
 
-  // --- back button and the title over the board ---------------------------
+  // --- the board's size -------------------------------------------------------
+  // CSS fits the board into the window; when its size changes, the Back button
+  // and the timer next to it follow.
+  function relayout() { layoutBack(); }
+  window.addEventListener('resize', relayout);
+  if (window.ResizeObserver) new ResizeObserver(relayout).observe(canvas);
+  // SDL resizes the canvas with the board (16, 24, 32 cells)
+  new MutationObserver(relayout).observe(canvas, { attributes: true, attributeFilter: ['width', 'height'] });
+
+  // --- back button, level list switch, title over the board ----------------
   // Back does what Esc does where it is: closes the page that is open (back to
   // where it was opened from), otherwise goes back from the game's screen.
   backButton.addEventListener('mousedown', (e) => e.preventDefault());  // keep the focus
@@ -506,31 +557,53 @@
     if (page) { if (page.back) page.back(); }
     else pressGameKey(27);
   });
-  // The button sits in the top left corner of the board (CSS); the board's
-  // timer starts right of it. The board is boardPx logical pixels wide and
-  // drawn canvas.clientWidth CSS pixels wide.
-  const BACK_RIGHT = 8 + 84 + 8;  // CSS px: margin, button, gap
+  // The button sits in the top left corner of the board; the game draws the
+  // timer right of it, its middle level with the button's. The board is
+  // boardPx logical pixels wide; the timer's digits are 18 of them high, and
+  // at least 4 from the edges (src/gfx/renderer.cpp).
+  const EDGE = 4, TIMER_HEIGHT = 18;
   let boardPx = 512;
   function layoutBack() {
-    backButton.style.left = '8px';
-    backButton.style.top = '8px';
-    if (!canvas.clientWidth || !Module._bc_set_hud_left) return;
-    Module._bc_set_hud_left(Math.ceil(BACK_RIGHT * boardPx / canvas.clientWidth));
+    const scale = canvas.clientWidth / boardPx;  // CSS px per logical px
+    if (!scale) return;
+    const top = Math.max(4, (EDGE + TIMER_HEIGHT / 2) * scale - backButton.offsetHeight / 2);
+    const left = Math.max(4, EDGE * scale);
+    backButton.style.left = left + 'px';
+    backButton.style.top = top + 'px';
+    if (!Module._bc_set_timer_at || !backButton.offsetWidth) return;
+    const gapPx = 0.5 * parseFloat(getComputedStyle(document.documentElement).fontSize);
+    const middle = top + backButton.offsetHeight / 2;
+    Module._bc_set_timer_at(Math.ceil((left + backButton.offsetWidth + gapPx) / scale),
+                            Math.round(middle / scale - TIMER_HEIGHT / 2));
   }
-  window.addEventListener('resize', layoutBack);
-  if (window.ResizeObserver) new ResizeObserver(layoutBack).observe(canvas);
+
+  // The level list's switch: which levels the list shows (1 carrot, 2 egg, 0
+  // no list) and whether the switch (Down below the grid) or Back (Up above
+  // it) is the selected item; Enter then presses it, in the game.
+  let listMode = 0;
+  let listBackSelected = false;  // Up from the top row of the list, or on the ending
+  levelModeButton.addEventListener('mousedown', (e) => e.preventDefault());
+  levelModeButton.addEventListener('click', () => {
+    if (Module._bc_toggle_level_mode) Module._bc_toggle_level_mode();
+  });
+  function showLevelList(mode, switchSelected, backSelected) {
+    listMode = mode;
+    listBackSelected = !!backSelected;
+    levelModeButton.textContent = mode === 2 ? 'Carrot levels' : 'Egg levels';
+    levelModeButton.classList.toggle('selected', switchSelected);
+    refresh();
+  }
 
   const DIFFICULTIES = ['Easy', 'Medium', 'Hard'];
   // kind: 0 nothing, 1 shipped carrot level, 2 shipped egg level, 3 generated
   function showLevelInfo(kind, number, size, difficulty, seed, px) {
     boardPx = px || boardPx;
-    $('level-title').classList.toggle('hidden', kind === 0);
-    $('level-kind').textContent = kind === 3 ? 'Generated level'
+    $('level-title').classList.toggle('invisible', kind === 0);
+    $('level-kind').textContent = kind === 0 ? ' ' : kind === 3 ? 'Generated level'
         : (kind === 2 ? 'Original egg level ' : 'Original level ') + number;
     $('level-params').textContent = kind === 3
-        ? size + ' × ' + size + ' · ' + DIFFICULTIES[difficulty] + ' · seed ' + seed : '';
-    $('level-params').classList.toggle('hidden', kind !== 3);
-    layoutBack();
+        ? size + ' × ' + size + ' · ' + DIFFICULTIES[difficulty] + ' · seed ' + seed : ' ';
+    relayout();
   }
 
   // Only the key hints that work on the current screen are shown.
@@ -557,7 +630,7 @@
         if (typing) break;  // moves the cursor in the seed field
         e.preventDefault();
         if (el.type === 'range') stepSlider(el, e.key === 'ArrowLeft' ? -1 : 1);
-        else if (page === seedPage) stepChoice(e.key === 'ArrowLeft' ? -1 : 1);
+        else if (page.rows) stepChoice(page, e.key === 'ArrowLeft' ? -1 : 1);
         break;
       case 'Enter': case ' ':
         if (e.key === ' ' && typing) break;
@@ -600,10 +673,12 @@
       switch (k.dataset.nav) {
         case 'up': page.move(-1); break;
         case 'down': page.move(1); break;
-        case 'left': case 'right':
-          if (el.type === 'range') stepSlider(el, k.dataset.nav === 'left' ? -1 : 1);
-          else if (page === seedPage) stepChoice(k.dataset.nav === 'left' ? -1 : 1);
+        case 'left': case 'right': {
+          const dir = k.dataset.nav === 'left' ? -1 : 1;
+          if (el.type === 'range') stepSlider(el, dir);
+          else if (page.rows) stepChoice(page, dir);
           break;
+        }
         case 'enter': page.confirm(); break;
         case 'back': if (page.back) page.back(); break;
       }
@@ -637,7 +712,7 @@
       }
     }],
 
-    postRun: [() => { loader.classList.add('hidden'); refresh(); layoutBack(); }],
+    postRun: [() => { loader.classList.add('hidden'); refresh(); }],
     // Called by App::reportScreen() whenever the game changes screen, or a
     // generated level replaces a built-in one or the other way round.
     onScreenChange: (screen, generated) => {
@@ -656,6 +731,8 @@
     onAudioChange: showAudio,
     // Called by App::reportLevelInfo() whenever the level on screen changes.
     onLevelInfo: showLevelInfo,
+    // Called by App::reportLevelList() on the level list.
+    onLevelList: showLevelList,
     toggleSettings: () => toggleSettings(),
     askSeed: openSeedDialog,
     print: (...a) => console.log(...a),
@@ -668,6 +745,7 @@
     },
   };
   Module.setStatus('loading…');
+  relayout();
 </script>
 {{{ SCRIPT }}}
 </body>

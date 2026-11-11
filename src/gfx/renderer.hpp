@@ -28,9 +28,12 @@ public:
     int logicalWidth() const  { return boardW_ * kTileSize; }
     int logicalHeight() const { return boardH_ * kTileSize; }
 
-    // Where the timer starts, in logical pixels from the left edge: the web
-    // page keeps its Back button in the top left corner of the board.
-    void setHudLeft(int x) { hudLeft_ = std::max(4, x); }
+    // Where the timer is, in logical pixels from the top left corner: the web
+    // page keeps its Back button there and the timer right of it, level with it.
+    void setTimerAt(int x, int y) {
+        timerX_ = std::max(4, x);
+        timerY_ = std::max(4, y);
+    }
 
     void clear();
     void present();
@@ -61,7 +64,8 @@ private:
     TextureCache tex_;
     int boardW_ = Grid::kClassic;
     int boardH_ = Grid::kClassic;
-    int hudLeft_ = 4;
+    int timerX_ = 4;
+    int timerY_ = 4;
 };
 
 }  // namespace bc::gfx
