@@ -30,7 +30,8 @@ if [ ! -f "$OUT/libcadical.a" ] || [ -n "$(find "$CAD" -newer "$OUT/libcadical.a
     ar rcs "$OUT/libcadical.a" "$OUT"/cadical/*.o 2>/dev/null
 fi
 
-$CXX $FLAGS tests/hint_game.cpp src/core/hint.cpp src/core/sat.cpp src/core/level.cpp \
-    src/core/game.cpp src/core/player.cpp src/core/rules.cpp "$OUT/libcadical.a" \
+$CXX $FLAGS -Isrc/third_party/base64 tests/hint_game.cpp src/core/hint.cpp src/core/sat.cpp \
+    src/core/level.cpp src/core/game.cpp src/core/player.cpp src/core/rules.cpp \
+    src/core/generator.cpp src/third_party/base64/base64.cpp "$OUT/libcadical.a" \
     -o "$OUT/hint_game"
 echo "built $OUT/hint_game"

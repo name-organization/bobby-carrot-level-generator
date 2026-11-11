@@ -32,6 +32,7 @@ bool Game::loadProcedural(unsigned int seed) {
     level_ = next;
     mode_ = Mode::Normal;
     index_ = -1; // Обозначает пользовательский/процедурный уровень
+    levelReference_.clear();
     restart();
     return true;
 }
@@ -40,6 +41,7 @@ bool Game::loadLevel(Level level) {
     level_ = std::move(level);
     mode_ = Mode::Normal;
     index_ = -1;
+    levelReference_.clear();
     restart();
     return true;
 }

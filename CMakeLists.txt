@@ -104,12 +104,14 @@ else()
     # Rule verification harness: proves every original level is still solvable
     # under the reconstructed tile semantics. Native only -- it is a test, not
     # something to ship to the browser.
-    add_executable(solve_levels tests/solve_levels.cpp ${CORE_SOURCES})
+    add_executable(solve_levels tests/solve_levels.cpp ${CORE_SOURCES} ${BASE64_SOURCES})
     target_link_libraries(solve_levels PRIVATE cadical)
+    target_include_directories(solve_levels PRIVATE src/third_party/base64)
 
     # Hint through the real Game class: follow it to the exit on levels 1-7.
-    add_executable(hint_game tests/hint_game.cpp ${CORE_SOURCES})
+    add_executable(hint_game tests/hint_game.cpp ${CORE_SOURCES} ${BASE64_SOURCES})
     target_link_libraries(hint_game PRIVATE cadical)
+    target_include_directories(hint_game PRIVATE src/third_party/base64)
 
     enable_testing()
     add_test(NAME levels_solvable

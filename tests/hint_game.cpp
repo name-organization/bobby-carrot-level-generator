@@ -93,8 +93,8 @@ int main(int argc, char** argv) {
         check(h && h->stage == hint::Stage::Reference,
               name + ": hint after restart uses the reference");
 
-        // step off the path at every point of it: the hint must re-route back
-        // on its own (no solver, no new request) whenever the route survives
+        // step off the path at every point of it: the hint must re-route on its
+        // own (no new request), via the solver if the remembered route is broken
         int rerouted = 0, hidden = 0, broken = 0;
         for (std::size_t k = 0; k < plan.size(); ++k) {
             g.restart();
@@ -115,9 +115,8 @@ int main(int argc, char** argv) {
             if (!moved || g.levelComplete() || g.playerDead()) continue;
             const hint::Result* shown = g.hint();
             if (!shown) { ++hidden; continue; }
-            if (shown->stage == hint::Stage::Flood) { ++rerouted; continue; }
-            if (shown->stage != hint::Stage::Reference ||
-                shown->verdict != hint::Verdict::Winnable) {
+            if (shown->verdict == hint::Verdict::DeadEnd) { ++rerouted; continue; }
+            if (shown->verdict != hint::Verdict::Winnable) {
                 ++broken;
                 std::printf("  step %zu: unexpected %s/%s\n", k, hint::stageName(shown->stage),
                             hint::verdictName(shown->verdict));
