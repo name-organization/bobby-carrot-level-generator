@@ -41,7 +41,7 @@ bool Player::tryStartStep(Grid& g, const Progress& p, Dir d) {
     if (d == Dir::None) return false;
 
     const Coord to{cell_.x + dirDX(d), cell_.y + dirDY(d)};
-    if (!Grid::inBounds(to.x, to.y)) return false;
+    if (!g.inBounds(to.x, to.y)) return false;
 
     facing_ = d;
     if (!rules::canStep(g, cell_, to, d, p.inv)) return false;

@@ -30,23 +30,6 @@ bool pointInRect(int x, int y, const SDL_Rect& r) {
     return x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h;
 }
 
-std::string toBase64Url(std::string s) {
-    std::replace(s.begin(), s.end(), '+', '-');
-    std::replace(s.begin(), s.end(), '/', '_');
-    while (!s.empty() && s.back() == '=') {
-        s.pop_back();
-    }
-    return s;
-}
-
-std::string fromBase64Url(std::string s) {
-    std::replace(s.begin(), s.end(), '-', '+');
-    std::replace(s.begin(), s.end(), '_', '/');
-    while (s.size() % 4 != 0) s.push_back('=');
-    return s;
-}
-
-
 // SDL_RenderWindowToLogical only exists from SDL 2.0.18, and the SDL2 port
 // bundled with older Emscripten releases predates it. Replicating the
 // letterbox maths keeps touch hit-testing working on every toolchain.
@@ -124,8 +107,28 @@ void App::shutdown() {
 void App::applyLayout() {
     const int w = gfx_.logicalWidth();
     const int h = gfx_.logicalHeight();
-    SDL_SetWindowSize(window_, w * windowScale_, h * windowScale_);
+    // A big board would make a huge window: past kMaxWindowSide it is scaled
+    // down (SDL fits the logical size into it). In the browser the scale is 1
+    // and the canvas keeps every pixel; the page's CSS fits it to the screen.
+    int ww = w * windowScale_, wh = h * windowScale_;
+    const int side = std::max(ww, wh);
+    if (side > kMaxWindowSide) {
+        ww = ww * kMaxWindowSide / side;
+        wh = wh * kMaxWindowSide / side;
+    }
+    SDL_SetWindowSize(window_, ww, wh);
     SDL_RenderSetLogicalSize(renderer_, w, h);
+}
+
+// The board is the level's size while a level is on screen and the classic
+// 16x16 on the menus; when that changes, so do the window and the viewport.
+void App::syncBoard() {
+    const bool level = screen_ == Screen::Play || screen_ == Screen::Cleared;
+    const int w = level ? game_.grid().w : Grid::kClassic;
+    const int h = level ? game_.grid().h : Grid::kClassic;
+    if (w == gfx_.boardW() && h == gfx_.boardH()) return;
+    gfx_.setBoard(w, h);
+    applyLayout();
 }
 
 void App::setViewMode(gfx::ViewMode m) {
@@ -152,8 +155,8 @@ void App::startLevel(Mode mode, int index) {
     mixer_.stopMusic();
 }
 
-void App::generateLevel() {
-    if (!game_.loadProcedural(0)) {  // 0 picks a random seed
+void App::generateLevel(unsigned int seed) {
+    if (!game_.loadProcedural(seed, generatedSize_, generatedSize_)) {  // 0 picks a random seed
         std::fprintf(stderr, "cannot generate a level\n");
         return;
     }
@@ -161,6 +164,22 @@ void App::generateLevel() {
     held_ = Dir::None;
     pendingTap_ = Dir::None;
     mixer_.stopMusic();
+}
+
+void App::askToGenerate() {
+#ifdef __EMSCRIPTEN__
+    const bool asked = EM_ASM_INT({
+        if (!Module.askSeed) return 0;
+        Module.askSeed($0);
+        return 1;
+    }, generatedSize_);
+    if (asked) return;
+#endif
+    generateLevel();
+}
+
+bool App::isGeneratedSize(int size) {
+    return size == Grid::kClassic || size == Grid::kClassic + 8 || size == Grid::kMaxW;
 }
 
 void App::openLevelSelect() {
@@ -357,34 +376,44 @@ void App::onKey(SDL_Keycode key) {
             selected_ = 0;
             if (screen_ == Screen::Play) startLevel(mode_, 0);
             break;
-        case SDLK_g: generateLevel(); break;
+        case SDLK_g: askToGenerate(); break;
+        case SDLK_b:
+            // the size of generated maps: 16, 24, 32 cells a side, then back
+            generatedSize_ = generatedSize_ >= Grid::kMaxW ? Grid::kClassic : generatedSize_ + 8;
+            std::printf("[gen] map size %dx%d\n", generatedSize_, generatedSize_);
+            if (screen_ == Screen::Play && game_.levelIndex() < 0) generateLevel();
+            break;
         case SDLK_q: goToMainMenu(); break;
-        // export level as base64 in URL
+        // export the generated level as a link: its seed and map size
         case SDLK_e: {
-            std::string encoded = toBase64Url(game_.level().encode());
-            #ifdef __EMSCRIPTEN__
-                EM_ASM({
-                    var u = new URL(window.location.href);
-                    u.searchParams.set('level', UTF8ToString($0));
-                    var href = u.toString();
+            if (screen_ != Screen::Play || game_.levelIndex() >= 0 || game_.seed() == 0) break;
+            const unsigned int seed = game_.seed();
+            const int size = game_.generatedWidth();
+#ifdef __EMSCRIPTEN__
+            EM_ASM({
+                var u = new URL(window.location.href);
+                u.searchParams.delete('level');  // links from before seeds
+                u.searchParams.set('seed', String($0 >>> 0));
+                u.searchParams.set('size', String($1));
+                var href = u.toString();
 
-                    window.history.replaceState(null, "", href);
+                window.history.replaceState(null, "", href);
 
-                    if (navigator.clipboard && window.isSecureContext) {
-                        navigator.clipboard.writeText(href).then(function() {
-                            console.log("Copied: " + href);
-                        }, function(e) {
-                            console.warn("clipboard", e);
-                        });
-                    } else {
-                        prompt("Copy link:", href);
-                    }
-                }, encoded.c_str());
-            #else
-                std::fprintf(stderr, "share: %s\n", encoded.c_str());
-            #endif
-                break;
-            }
+                if (navigator.clipboard && window.isSecureContext) {
+                    navigator.clipboard.writeText(href).then(function() {
+                        console.log("Copied: " + href);
+                    }, function(e) {
+                        console.warn("clipboard", e);
+                    });
+                } else {
+                    prompt("Copy link:", href);
+                }
+            }, seed, size);
+#else
+            std::printf("share: --seed=%u --size=%d\n", seed, size);
+#endif
+            break;
+        }
         default: break;
     }
 }
@@ -554,6 +583,7 @@ void App::stepLogic() {
 }
 
 void App::render() {
+    syncBoard();
     gfx_.clear();
 
     switch (screen_) {
@@ -581,21 +611,14 @@ void App::render() {
     gfx_.present();
 }
 
-void App::startFromEncoded(const std::string& base64url) {
-    Level level;
-    std::string err;
-    if (!level.decode(fromBase64Url(base64url), &err)) {
-        std::fprintf(stderr, "[bobby] bad ?level: %s\n", err.c_str());
-        return;
+bool App::startFromSeed(unsigned int seed, int size) {
+    if (seed == 0 || !isGeneratedSize(size)) {
+        std::fprintf(stderr, "[bobby] bad level link: seed %u, size %d\n", seed, size);
+        return false;
     }
-    if (!game_.loadLevel(level)) {
-        std::fprintf(stderr, "[bobby] loadDecoded refused level\n");
-        return;
-    }
-    screen_ = Screen::Play;
-    held_ = Dir::None;
-    pendingTap_ = Dir::None;
-    mixer_.stopMusic();
+    generatedSize_ = size;
+    generateLevel(seed);
+    return screen_ == Screen::Play;
 }
 
 void App::frame() {

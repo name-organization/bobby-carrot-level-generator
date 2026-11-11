@@ -203,6 +203,39 @@ void fillRoom(Canvas& c, const Room& room, Pattern pattern, const std::vector<ch
 
 constexpr int kWholeMapTries = 2;
 
+// SAT conflicts per solver run while generating. A run past the budget
+// answers "unknown", which the generator treats as "cannot win": the spike
+// being tried is dropped. Far below what a hint may spend (400000), since a
+// level asks the solver dozens of times.
+constexpr long long kGenerationConflicts = 20000;
+
+// When a new spike breaks the current solution, the solver may look for
+// another way round it -- but on a 32x32 map one such search can take a few
+// hundred milliseconds, so a level gets only this many, with a smaller budget.
+// The limit is a count, not a time, so that a seed still gives the same level
+// on every machine. Past it, a spike that breaks the solution is left out.
+constexpr int kReroutes = 4;
+constexpr long long kRerouteConflicts = 5000;
+
+// Is the level still winnable with the spike just placed? `reference` is the
+// current solution; on success it becomes the new one.
+bool stillWinnable(const Grid& g, Coord start, std::vector<Coord>& reference, int& reroutes,
+                   hint::Result& out) {
+    hint::Options cheap;
+    cheap.useSolver = false;  // flood fill and the reference only
+    hint::Result h = hint::compute(g, start, reference, cheap);
+    if (h.verdict == hint::Verdict::Unknown && reroutes > 0) {
+        --reroutes;
+        hint::Options reroute;
+        reroute.conflictBudget = kRerouteConflicts;
+        h = hint::compute(g, start, reference, reroute);
+    }
+    if (h.verdict != hint::Verdict::Winnable) return false;
+    out = std::move(h);
+    reference = hint::cellsAlong(start, out.moves);
+    return true;
+}
+
 wfc::Symbol lowestSymbol(wfc::Mask m) {
     for (int s = 0; s < wfc::kSymbols; ++s)
         if (m & wfc::bit(static_cast<wfc::Symbol>(s))) return static_cast<wfc::Symbol>(s);
@@ -413,8 +446,11 @@ bool build(const Params& p, Walls walls, Rng& rng, Result& out) {
 
     // --- 1. layout ---------------------------------------------------------
     const int slots = g.nx * g.ny;
+    // a 2x2 grid needs all four rooms for a cycle
     const int total =
-        std::clamp(static_cast<int>(std::lround(p.fill * slots)), std::min(3, slots), slots);
+        slots <= 4 && p.loopChance > 0
+            ? slots
+            : std::clamp(static_cast<int>(std::lround(p.fill * slots)), std::min(3, slots), slots);
     const int mainLen =
         std::clamp(static_cast<int>(std::lround(total * p.mainShare)), std::min(2, total), total);
 
@@ -520,15 +556,38 @@ bool build(const Params& p, Walls walls, Rng& rng, Result& out) {
     }
 
     // --- 2. doors ------------------------------------------------------------
+    // the layout tree first, then the doors that close cycles
+    std::vector<Door>& doors = out.doors;
+    doors.clear();
+    for (std::size_t i = 1; i < rooms.size(); ++i) {
+        Door d;
+        d.a = rooms[i].parent;
+        d.b = static_cast<int>(i);
+        doors.push_back(d);
+    }
+    for (int i = 0; i < static_cast<int>(rooms.size()); ++i) {
+        for (int k : {1, 2}) {  // east and south: every pair once
+            const int sx = rooms[i].sx + kDX[k], sy = rooms[i].sy + kDY[k];
+            if (!usedAt(sx, sy)) continue;
+            const int j = slotRoom[g.index(sx, sy)];
+            if (rooms[j].parent == i || rooms[i].parent == j) continue;  // already a tree door
+            if (!rng.chance(p.loopChance)) continue;
+            Door d;
+            d.a = i;
+            d.b = j;
+            d.loop = true;
+            doors.push_back(d);
+        }
+    }
+
     std::vector<char> entry(static_cast<std::size_t>(c.w * c.h), 0);
     std::vector<char> widened(static_cast<std::size_t>(c.w * c.h), 0);  // cells of merged walls
-    std::vector<Coord> entryOf(rooms.size(), Coord{-1, -1});  // where the parent's door comes in
-    for (std::size_t i = 1; i < rooms.size(); ++i) {
-        Room& b = rooms[i];
-        const Room& a = rooms[b.parent];
-        const bool onPath = b.kind == RoomKind::Main || b.kind == RoomKind::Exit;
-        b.spikeDoor = onPath && rng.chance(p.spikeDoorChance);
-        b.merged = !b.spikeDoor && rng.chance(p.mergeChance);
+    std::vector<Coord> entryOf(rooms.size(), Coord{-1, -1});  // where the tree door comes in
+    for (Door& door : doors) {
+        const Room& a = rooms[static_cast<std::size_t>(door.a)];
+        const Room& b = rooms[static_cast<std::size_t>(door.b)];
+        door.spike = rng.chance(p.spikeDoorChance);
+        door.merged = !door.spike && rng.chance(p.mergeChance);
 
         const bool horizontal = a.sy == b.sy;
         const bool aFirst = horizontal ? a.sx < b.sx : a.sy < b.sy;
@@ -542,24 +601,25 @@ bool build(const Params& p, Walls walls, Rng& rng, Result& out) {
         if (s0 > s1) return false;
 
         const int at = rng.range(s0, s1);
-        const int from = b.merged ? s0 : at;
-        const int to = b.merged ? s1 : at;
+        const int from = door.merged ? s0 : at;
+        const int to = door.merged ? s1 : at;
         const int len = c1 - c0 + 1;
         for (int s = from; s <= to; ++s) {
             for (int q = c0; q <= c1; ++q) {
                 // a short door is all spikes, a long one has a single spike midway
-                const bool spike = b.spikeDoor && (len <= 2 || q == c0 + len / 2);
+                const bool spike = door.spike && (len <= 2 || q == c0 + len / 2);
                 const std::uint8_t tile = spike ? T_CRACKED : T_GROUND;
                 const int x = horizontal ? q : s, y = horizontal ? s : q;
                 c.at(x, y) = tile;
-                if (b.merged) widened[static_cast<std::size_t>(y * c.w + x)] = 1;
+                door.cells.push_back({x, y});
+                if (door.merged) widened[static_cast<std::size_t>(y * c.w + x)] = 1;
             }
         }
         const Coord loCell = horizontal ? Coord{c0 - 1, at} : Coord{at, c0 - 1};
         const Coord hiCell = horizontal ? Coord{c1 + 1, at} : Coord{at, c1 + 1};
         entry[static_cast<std::size_t>(loCell.y * c.w + loCell.x)] = 1;
         entry[static_cast<std::size_t>(hiCell.y * c.w + hiCell.x)] = 1;
-        entryOf[i] = aFirst ? hiCell : loCell;
+        if (!door.loop) entryOf[static_cast<std::size_t>(door.b)] = aFirst ? hiCell : loCell;
     }
 
     // --- 3. content ----------------------------------------------------------
@@ -602,7 +662,8 @@ bool build(const Params& p, Walls walls, Rng& rng, Result& out) {
     if (useWfc) {
         const std::array<int, wfc::kSymbols> percent{p.wfcHedgePercent, 100, 100,
                                                      p.wfcCarrotPercent, p.wfcSpikePercent};
-        fillWithWfc(*p.model, percent, p.wfcWholeMap, std::max(1, p.wfcContext), std::max(1, p.wfcTries),
+        const bool whole = p.wfcWholeMap && p.width * p.height <= p.wfcWholeMapCells;
+        fillWithWfc(*p.model, percent, whole, std::max(1, p.wfcContext), std::max(1, p.wfcTries),
                     std::max(1, p.wfcNodeBudget), c, rooms, walls == Walls::Fence, g.t, out.start,
                     out.exit, entry, widened, byPattern, rng);
         for (char left : byPattern) left ? ++out.fallbackRooms : ++out.wfcRooms;
@@ -642,33 +703,59 @@ int countTiles(const Grid& g, std::uint8_t tile) {
     return static_cast<int>(std::count(g.cells.begin(), g.cells.end(), tile));
 }
 
-// --- 5b. spike repair ----------------------------------------------------------
-// WFC draws spikes where the originals have them, but nothing makes it keep a
-// way through. When the level cannot be won, take out every spike inside the
-// rooms (door spikes come from the layout and are safe), then put back each one
-// the solver can still win around.
-hint::Result repairSpikes(Level& level, const std::vector<Room>& rooms, Rng& rng) {
+// --- 5. spikes, verified --------------------------------------------------------
+// Neither the doors nor WFC know whether their spikes leave a way through, and
+// asking the solver about a level that cannot be won is the expensive question
+// (a proof that no order works). So the spikes are taken out -- the bare
+// layout can always be won -- and put back one at a time, door spikes first
+// (they are the choices between rooms), each checked with the current solution
+// as the hint's reference. If that solution crosses the new spike at most once
+// it still wins and the check costs a walk along it; only when it does not
+// does the solver look for another way (stillWinnable). A spike with no way
+// around it is left out.
+hint::Result placeSpikes(Level& level, const std::vector<Door>& doors, Rng& rng, int& dropped,
+                         int& reroutes) {
     Grid& g = level.grid;
-    std::vector<Coord> spikes;
-    for (const Room& room : rooms) {
-        for (int y = room.y0; y <= room.y1; ++y) {
-            for (int x = room.x0; x <= room.x1; ++x) {
-                if (g.at(x, y) != T_CRACKED) continue;
-                spikes.push_back({x, y});
-                g.at(x, y) = T_GROUND;
+    std::vector<char> onDoor(Grid::kCells, 0);
+    for (const Door& door : doors)
+        for (Coord cell : door.cells) onDoor[cell.index()] = 1;
+    std::vector<Coord> doorSpikes, roomSpikes;
+    for (int y = 0; y < g.h; ++y) {
+        for (int x = 0; x < g.w; ++x) {
+            if (g.at(x, y) != T_CRACKED) continue;
+            (onDoor[Coord{x, y}.index()] ? doorSpikes : roomSpikes).push_back({x, y});
+            g.at(x, y) = T_GROUND;
+        }
+    }
+    rng.shuffle(doorSpikes);
+    rng.shuffle(roomSpikes);
+
+    hint::Options options;
+    options.conflictBudget = kGenerationConflicts;
+    hint::Result best = hint::compute(g, level.start, {}, options);
+    dropped = 0;
+    if (best.verdict != hint::Verdict::Winnable) return best;
+    std::vector<Coord> reference = hint::cellsAlong(level.start, best.moves);
+    for (const std::vector<Coord>* group : {&doorSpikes, &roomSpikes}) {
+        for (Coord cell : *group) {
+            g.at(cell) = T_CRACKED;
+            if (!stillWinnable(g, level.start, reference, reroutes, best)) {
+                g.at(cell) = T_GROUND;
+                ++dropped;
             }
         }
     }
-    hint::Result best = hint::compute(g, level.start, {});
-    if (best.verdict != hint::Verdict::Winnable) return best;
-    rng.shuffle(spikes);
-    for (Coord cell : spikes) {
-        g.at(cell) = T_CRACKED;
-        hint::Result h = hint::compute(g, level.start, {});
-        if (h.verdict == hint::Verdict::Winnable) best = std::move(h);
-        else g.at(cell) = T_GROUND;
-    }
     return best;
+}
+
+// A door counts as a spike door if any of its cells ended up a spike.
+void markSpikeDoors(Result& res) {
+    for (Door& door : res.doors) {
+        door.spike = false;
+        for (Coord cell : door.cells)
+            if (res.canvas.inBounds(cell.x, cell.y) && res.canvas.at(cell.x, cell.y) == T_CRACKED)
+                door.spike = true;
+    }
 }
 
 // --- 6. spikes ---------------------------------------------------------------
@@ -680,22 +767,23 @@ hint::Result repairSpikes(Level& level, const std::vector<Room>& rooms, Rng& rng
 // a cell: 14.7% of corridor cells (open on two opposite sides), 7.5% of
 // corners, 7.8% of cells open on three sides, 6.2% of open floor, and never a
 // dead end.
-void addSpikes(Result& res, int target, const wfc::Model* model, int maxUnknown, Rng& rng) {
+void addSpikes(Result& res, int target, const wfc::Model* model, int maxUnknown, int& reroutes,
+               Rng& rng) {
     Level level;
     if (!res.canvas.toLevel(level)) return;
     Grid& g = level.grid;
     const int want = target - countTiles(g, T_CRACKED);
     if (want <= 0) return;
     auto walkable = [&](int x, int y) {
-        return Grid::inBounds(x, y) && g.at(x, y) >= T_FIRST_WALKABLE;
+        return g.inBounds(x, y) && g.at(x, y) >= T_FIRST_WALKABLE;
     };
 
     // Weighted random order without floating point (which could round
     // differently in the browser): every cell goes in `weight` times, the pool
     // is shuffled, and a cell's first appearance is its place in the order.
     std::vector<Coord> pool;
-    for (int y = 0; y < Grid::H; ++y) {
-        for (int x = 0; x < Grid::W; ++x) {
+    for (int y = 0; y < g.h; ++y) {
+        for (int x = 0; x < g.w; ++x) {
             const std::uint8_t t = g.at(x, y);
             if (t != T_GROUND && t != T_CARROT) continue;
             const bool n = walkable(x, y - 1), s = walkable(x, y + 1);
@@ -710,6 +798,7 @@ void addSpikes(Result& res, int target, const wfc::Model* model, int maxUnknown,
     rng.shuffle(pool);
 
     std::vector<char> tried(Grid::kCells, 0);
+    std::vector<Coord> reference = hint::cellsAlong(level.start, res.solution);
     int carrots = level.carrotTotal;
     int placed = 0, tries = 0;
     for (Coord cell : pool) {
@@ -729,8 +818,8 @@ void addSpikes(Result& res, int target, const wfc::Model* model, int maxUnknown,
             }
         }
         ++tries;
-        const hint::Result h = hint::compute(g, level.start, {});
-        if (h.verdict == hint::Verdict::Winnable) {
+        hint::Result h;
+        if (stillWinnable(g, level.start, reference, reroutes, h)) {
             res.solution = h.moves;
             ++placed;
             if (old == T_CARROT) --carrots;
@@ -738,7 +827,7 @@ void addSpikes(Result& res, int target, const wfc::Model* model, int maxUnknown,
             g.at(cell) = old;
         }
     }
-    for (int i = 0; i < Grid::kCells; ++i) res.canvas.cells[static_cast<std::size_t>(i)] = g.cells[i];
+    res.canvas = Canvas::fromGrid(g);
 }
 
 }  // namespace
@@ -772,23 +861,42 @@ Result generate(const Params& params, std::uint32_t seed) {
         // --- 5. verify -------------------------------------------------------
         Level level;
         if (!res.canvas.toLevel(level)) return res;  // bigger than the engine plays
-        hint::Result h = hint::compute(level.grid, level.start, {});
-        if (h.verdict != hint::Verdict::Winnable && res.wfcRooms > 0) {
-            h = repairSpikes(level, res.rooms, rng);
-            res.spikesRepaired = true;
-            for (int i = 0; i < Grid::kCells; ++i)
-                res.canvas.cells[static_cast<std::size_t>(i)] = level.grid.cells[i];
-        }
+        int dropped = 0, reroutes = kReroutes;
+        const hint::Result h = placeSpikes(level, res.doors, rng, dropped, reroutes);
+        res.spikesRepaired = dropped > 0;
+        res.canvas = Canvas::fromGrid(level.grid);
         if (h.verdict == hint::Verdict::Winnable) {
             res.solution = h.moves;
             res.verified = true;
             addSpikes(res, p.spikeTarget, p.model && !p.model->empty() ? p.model : nullptr,
-                      p.spikeUnknownWindows, rng);
+                      p.spikeUnknownWindows, reroutes, rng);
+            markSpikeDoors(res);
             return res;
         }
         last = std::move(res);
     }
     return last;
+}
+
+Params Params::forSize(int width, int height) {
+    Params p;
+    p.width = width;
+    p.height = height;
+    const int side = std::max(width, height);
+    if (side <= 18) {
+        p.roomSize = 4;
+        p.wfcCarrotPercent = 700;
+        p.spikeTarget = 6;
+    } else if (side <= 26) {
+        p.roomSize = 5;
+        p.wfcCarrotPercent = 320;
+        p.spikeTarget = 12;
+    } else {
+        p.roomSize = 6;
+        p.wfcCarrotPercent = 300;
+        p.spikeTarget = 20;
+    }
+    return p;
 }
 
 const char* wallsName(Walls walls) {

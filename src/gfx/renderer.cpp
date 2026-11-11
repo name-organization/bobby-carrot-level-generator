@@ -69,8 +69,11 @@ void Renderer::updateCamera(const Game& game) {
     }
     const int px = static_cast<int>(game.player().fx() * kTileSize);
     const int py = static_cast<int>(game.player().fy() * kTileSize);
-    camX_ = std::clamp(px - kHandheldW / 2 + kTileSize / 2, 0, kFullW - kHandheldW);
-    camY_ = std::clamp(py - kHandheldH / 2 + kTileSize / 2, 0, kFullH - kHandheldH);
+    const Grid& g = game.grid();
+    camX_ = std::clamp(px - kHandheldW / 2 + kTileSize / 2, 0,
+                       std::max(0, g.w * kTileSize - kHandheldW));
+    camY_ = std::clamp(py - kHandheldH / 2 + kTileSize / 2, 0,
+                       std::max(0, g.h * kTileSize - kHandheldH));
 }
 
 void Renderer::drawTiles(const Game& game, int frameTick) {
@@ -78,8 +81,8 @@ void Renderer::drawTiles(const Game& game, int frameTick) {
     const int animFrame = (frameTick * 16 / kTicksPerSecond) % 4;  // 4 frames at 16 fps
     const bool open = game.allCollected();
 
-    for (int y = 0; y < Grid::H; ++y) {
-        for (int x = 0; x < Grid::W; ++x) {
+    for (int y = 0; y < game.grid().h; ++y) {
+        for (int x = 0; x < game.grid().w; ++x) {
             const std::uint8_t tile = game.grid().at(x, y);
             const int dx = x * kTileSize - camX_;
             const int dy = y * kTileSize - camY_;

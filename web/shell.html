@@ -62,6 +62,23 @@
     #menu .btn:not(.selected) { background: #263020; border-color: #36422c; }
     .btn:active { transform: translateY(1px); border-bottom-width: 2px; }
     .hidden { display: none !important; }
+
+    /* Asked before every level made with G or "Generate level": a random
+       seed or a given one. Covers the canvas like the start page. */
+    #seed-dialog {
+      position: absolute; inset: 0; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 12px; padding: 20px;
+      background: rgba(27, 33, 23, .96); border-radius: 6px; text-align: center;
+    }
+    #seed-dialog h2 { margin: 0 0 4px; font-size: 20px; letter-spacing: .04em; }
+    #seed-dialog .note { color: var(--dim); }
+    #seed-choice, #seed-form { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+    #seed-input {
+      font: inherit; color: var(--ink); background: var(--bg); text-align: center;
+      border: 1px solid #36422c; border-radius: 6px; padding: 8px 12px; width: 200px;
+    }
+    #seed-input:focus { border-color: #c7792f; outline: none; }
+    #seed-error { color: #e0866b; min-height: 1.5em; }
   </style>
 </head>
 <body>
@@ -72,6 +89,22 @@
     <h1><span>🥕</span>Bobby Carrot</h1>
     <button class="btn" id="btn-generate" type="button">Generate level</button>
     <button class="btn" id="btn-select" type="button">Select level</button>
+  </div>
+  <div id="seed-dialog" class="hidden" role="dialog" aria-labelledby="seed-title">
+    <h2 id="seed-title">New level</h2>
+    <div class="note" id="seed-size"></div>
+    <div id="seed-choice">
+      <button class="btn" id="btn-seed-random" type="button">Random seed</button>
+      <button class="btn" id="btn-seed-fixed" type="button">Enter seed</button>
+    </div>
+    <form id="seed-form" class="hidden" autocomplete="off" novalidate>
+      <input id="seed-input" type="text" inputmode="numeric" pattern="[0-9]*"
+             placeholder="seed" aria-label="seed" spellcheck="false">
+      <div id="seed-error"></div>
+      <button class="btn" type="submit">Generate</button>
+      <button class="btn" id="btn-seed-back" type="button">Back</button>
+    </form>
+    <div class="note desktop-only"><kbd>Esc</kbd> cancel</div>
   </div>
   <div id="loader">
     <div>
@@ -97,11 +130,12 @@
     <span data-show="play gen"><button class="key" type="button" tabindex="-1" data-key="104">H</button> show hint</span>
     <span data-show="play gen"><button class="key" type="button" tabindex="-1" data-key="114">R</button> restart</span>
     <span data-show="play gen"><button class="key" type="button" tabindex="-1" data-key="103">G</button> generate level</span>
+    <span data-show="gen select"><button class="key" type="button" tabindex="-1" data-key="98">B</button> map size</span>
     <span data-show="select"><button class="key" type="button" tabindex="-1" data-key="1073741906">↑</button><button class="key" type="button" tabindex="-1" data-key="1073741905">↓</button><button class="key" type="button" tabindex="-1" data-key="1073741904">←</button><button class="key" type="button" tabindex="-1" data-key="1073741903">→</button> choose</span>
     <span data-show="select"><button class="key" type="button" tabindex="-1" data-key="13">Enter</button> play</span>
     <span data-show="end"><button class="key" type="button" tabindex="-1" data-key="13">Enter</button> continue</span>
     <span data-show="play select"><button class="key" type="button" tabindex="-1" data-key="116">T</button> carrot/egg mode</span>
-    <span data-show="play gen"><button class="key" type="button" tabindex="-1" data-key="101">E</button> export level as URL</span>
+    <span data-show="gen"><button class="key" type="button" tabindex="-1" data-key="101">E</button> copy link to level</span>
   </div>
   <div class="row">
     <span data-show="play gen"><button class="key" type="button" tabindex="-1" data-key="1073741906">↑</button><button class="key" type="button" tabindex="-1" data-key="1073741905">↓</button><button class="key" type="button" tabindex="-1" data-key="1073741904">←</button><button class="key" type="button" tabindex="-1" data-key="1073741903">→</button> move</span>
@@ -156,6 +190,7 @@
   // from anywhere. Registered before SDL adds its own listeners, so it runs
   // first.
   window.addEventListener('keydown', (e) => {
+    if (seedDialogOpen()) return;  // the seed dialog takes its own keys
     if (menu.classList.contains('hidden') || e.key === 'g' || e.key === 'G') return;
     e.stopImmediatePropagation();
     if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
@@ -173,7 +208,10 @@
     const fn = Module['_' + name];
     if (fn) fn();
   }
-  document.getElementById('btn-generate').addEventListener('click', () => callGame('bc_generate_level'));
+  // Through the G key, so the game asks for the seed with the map size.
+  document.getElementById('btn-generate').addEventListener('click', () => {
+    if (Module._bc_press_key) Module._bc_press_key(103);
+  });
   document.getElementById('btn-select').addEventListener('click', () => callGame('bc_select_level'));
 
   // Clickable key labels. Pressing the mouse on them must not take the focus,
@@ -194,6 +232,89 @@
     });
   });
 
+  // --- seed dialog ---------------------------------------------------------
+  // Opened by the game (App::askToGenerate) through Module.askSeed(size).
+  // "Random seed" generates at once; "Enter seed" shows a field for one.
+  const MAX_SEED = 4294967295;  // seeds are 32-bit, 0 means random
+  const seedDialog = document.getElementById('seed-dialog');
+  const seedChoice = document.getElementById('seed-choice');
+  const seedForm = document.getElementById('seed-form');
+  const seedInput = document.getElementById('seed-input');
+  const seedError = document.getElementById('seed-error');
+  const seedButtons = [document.getElementById('btn-seed-random'),
+    document.getElementById('btn-seed-fixed')];
+
+  function seedDialogOpen() { return !seedDialog.classList.contains('hidden'); }
+
+  function showSeedChoice() {
+    seedForm.classList.add('hidden');
+    seedChoice.classList.remove('hidden');
+    seedButtons[0].focus();
+  }
+
+  function openSeedDialog(size) {
+    document.getElementById('seed-size').textContent = 'map ' + size + ' \u00d7 ' + size;
+    seedInput.value = '';
+    seedError.textContent = '';
+    seedDialog.classList.remove('hidden');
+    showSeedChoice();
+  }
+
+  function closeSeedDialog() {
+    seedDialog.classList.add('hidden');
+    if (!menu.classList.contains('hidden')) selectMenu(menuIndex);
+    else canvas.focus();
+  }
+
+  function generateWithSeed(seed) {
+    closeSeedDialog();
+    // >>> 0 keeps seeds above 2^31 whole on their way to the unsigned int
+    if (Module._bc_generate_level) Module._bc_generate_level(seed >>> 0);
+  }
+
+  seedButtons[0].addEventListener('click', () => generateWithSeed(0));
+  seedButtons[1].addEventListener('click', () => {
+    seedChoice.classList.add('hidden');
+    seedForm.classList.remove('hidden');
+    seedError.textContent = '';
+    seedInput.focus();
+    seedInput.select();
+  });
+  document.getElementById('btn-seed-back').addEventListener('click', showSeedChoice);
+  seedInput.addEventListener('input', () => { seedError.textContent = ''; });
+  seedForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const text = seedInput.value.trim();
+    const seed = /^[0-9]{1,10}$/.test(text) ? Number(text) : NaN;
+    if (!(seed >= 1 && seed <= MAX_SEED)) {
+      seedError.textContent = 'a whole number from 1 to ' + MAX_SEED;
+      seedInput.focus();
+      return;
+    }
+    generateWithSeed(seed);
+  });
+
+  // Keys pressed in the dialog stay in it: SDL listens on the window, and
+  // would otherwise move Bobby or restart the level while a seed is typed.
+  // Key-ups still go through, so SDL never thinks a key is held down.
+  ['keydown', 'keypress'].forEach((type) => {
+    seedDialog.addEventListener(type, (e) => {
+      e.stopPropagation();
+      if (type !== 'keydown') return;
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        if (seedForm.classList.contains('hidden')) closeSeedDialog();
+        else showSeedChoice();
+      } else if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') &&
+                 !seedChoice.classList.contains('hidden')) {
+        e.preventDefault();
+        const i = seedButtons.indexOf(document.activeElement);
+        seedButtons[(i + 1) % seedButtons.length].focus();
+      }
+    });
+  });
+  seedButtons.forEach((b) => b.addEventListener('mouseenter', () => b.focus()));
+
   // Arrow keys and space scroll the page by default, which fights the game.
   window.addEventListener('keydown', (e) => {
     if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) e.preventDefault();
@@ -203,11 +324,14 @@
     canvas: canvas,
     preRun: [() => {
       try {
+        // A shared generated level: ?seed=<seed>&size=<side>, read by main().
         const params = new URLSearchParams(window.location.search);
-        const level = params.get('level');
-        if (level) {
-          Module.__levelB64 = level;
-          console.log('[bobby] start with level payload, len=' + level.length);
+        const seed = params.get('seed');
+        if (seed) {
+          Module.__seed = seed;
+          const size = params.get('size');
+          if (size) Module.__size = size;
+          console.log('[bobby] start with seed ' + seed + ', size ' + (size || 16));
         }
       } catch (e) {
         console.warn('[bobby] failed to parse URL:', e);
@@ -230,6 +354,7 @@
       if (onTitle) selectMenu(menuIndex);
       else canvas.focus();
     },
+    askSeed: openSeedDialog,
     print: (...a) => console.log(...a),
     printErr: (...a) => console.warn(...a),
     setStatus: (text) => {

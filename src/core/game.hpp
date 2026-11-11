@@ -18,8 +18,11 @@ public:
     explicit Game(std::string assetRoot = "assets/v1") : root_(std::move(assetRoot)) {}
 
     bool load(Mode mode, int index);
-    // A new room-based level (roomgen.hpp); 0 picks a random seed.
-    bool loadProcedural(unsigned int seed = 0);
+    // A new room-based level (roomgen.hpp) of the given size, up to
+    // Grid::kMaxW x Grid::kMaxH; seed 0 picks a random one. The same seed and
+    // size always give the same level, which is how levels are shared.
+    bool loadProcedural(unsigned int seed = 0, int width = Grid::kClassic,
+                        int height = Grid::kClassic);
     // Plays a level that is not one of the shipped files: a generated or an
     // imported one. `reference` is a winning solution as moves from the start,
     // if known. Always succeeds.
@@ -40,6 +43,12 @@ public:
     const Level& level() const      { return level_; }
     Mode mode() const               { return mode_; }
     int levelIndex() const          { return index_; }
+    // Seed and requested size of the generated level being played; seed 0
+    // when the level was not generated. The size is the one asked for, which
+    // the level itself can differ from when the generator fell back.
+    unsigned int seed() const       { return seed_; }
+    int generatedWidth() const      { return genWidth_; }
+    int generatedHeight() const     { return genHeight_; }
     const Progress& progress() const{ return progress_; }
 
     // True once every carrot (or every patch of grass) has been taken, which
@@ -90,6 +99,7 @@ private:
     // path, against 400000 for a hint asked with H.
     static constexpr long long kRerouteConflicts = 50000;
 
+    void rememberSeed(unsigned int seed, int width, int height);
     void answerHint(bool rejoinOnly);
     void followHint();
     // Learned from the original carrot levels on first use; nullptr if they
@@ -105,6 +115,9 @@ private:
     Progress progress_;
     Mode mode_ = Mode::Normal;
     int index_ = 0;
+    unsigned int seed_ = 0;
+    int genWidth_ = 0;
+    int genHeight_ = 0;
     int elapsedTicks_ = 0;
     int moveCount_ = 0;
     unsigned lastEvents_ = ev::None;
