@@ -1,5 +1,6 @@
 PORT  ?= 8080
 ASSETS_DIR = assets/v1
+IMAGE = bobby
 SDL = docker/sdl-release-2.32.10.zip
 
 .PHONY: all run build-image

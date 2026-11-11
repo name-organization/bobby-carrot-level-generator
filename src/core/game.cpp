@@ -69,13 +69,15 @@ bool Game::loadProcedural(unsigned int seed) {
     return true;
 }
 
-void Game::loadLevel(const Level& level, const std::vector<Dir>& reference) {
+bool Game::loadLevel(const Level& level, const std::vector<Dir>& reference) {
     level_ = level;
     mode_ = Mode::Normal;
     index_ = -1;  // not one of the shipped levels
+    // a reference left over from the previous level must not reach this one
     levelReference_ = reference.empty() ? std::vector<Coord>{}
                                         : hint::cellsAlong(level_.start, reference);
     restart();
+    return true;
 }
 
 void Game::restart() {
