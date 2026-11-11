@@ -83,6 +83,7 @@ private:
     void reportScreen();
     void applyAudio();
     void reportAudio();
+    void reportLevelUrl();
 
     SDL_Window* window_ = nullptr;
     SDL_Renderer* renderer_ = nullptr;
@@ -99,6 +100,8 @@ private:
     int reportedMusic_ = -1;
     int reportedSound_ = -1;
     bool reportedMuted_ = false;
+    unsigned int reportedSeed_ = 0;  // seed last put into the page address
+    int reportedSize_ = 0;
     Mode mode_ = Mode::Normal;
     int selected_ = 0;
     int frameTick_ = 0;
