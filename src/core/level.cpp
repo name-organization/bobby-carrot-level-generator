@@ -177,10 +177,10 @@ bool Level::saveToFile(const std::string& path, std::string_view title) const {
 }
 
 std::string Level::pathFor(Mode mode, int index, const std::string& root) {
-    char name[64];
-    std::snprintf(name, sizeof(name), "%s/level/%s%02d.lvl", root.c_str(),
+    char name[32];
+    std::snprintf(name, sizeof(name), "%s%02d.lvl",
                   mode == Mode::Normal ? "normal" : "egg", index + 1);
-    return std::string(name);
+    return root + "/level/" + name;
 }
 
 std::string Level::encode() const {
