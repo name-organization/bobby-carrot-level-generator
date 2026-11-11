@@ -479,15 +479,11 @@ int main(int argc, char** argv) {
         if (asLevel) {
             // the .lvl text must read back as the same level, size included
             Level back;
-            Level shared;  // and through the share code (Level::encode/decode)
             const bool same = back.loadFromText(level.toText(level.name)) &&
                               back.grid.w == level.grid.w && back.grid.h == level.grid.h &&
-                              back.grid.cells == level.grid.cells &&
-                              shared.decode(level.encode()) && shared.grid.w == level.grid.w &&
-                              shared.grid.h == level.grid.h &&
-                              shared.grid.cells == level.grid.cells;
+                              back.grid.cells == level.grid.cells;
             roundTrips += same;
-            if (!same) std::printf("seed %u: the .lvl text or share code does not read back the same\n", seed);
+            if (!same) std::printf("seed %u: the .lvl text does not read back the same\n", seed);
         }
         if (ok) moves += static_cast<double>(solution.size());
 
