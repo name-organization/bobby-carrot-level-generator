@@ -2,6 +2,7 @@
 
 #include <SDL.h>
 
+#include <algorithm>
 #include <string>
 
 #include "../core/game.hpp"
@@ -9,26 +10,14 @@
 
 namespace bc::gfx {
 
-// Two presentations of the same board: the whole island at once, which suits
-// a desktop window, and the original handset viewport that scrolls behind
-// Bobby. The full view is as big as the board, in pixels: a 32x32 board is
-// 1024 x 1024 logical pixels, which SDL scales into the window.
-enum class ViewMode { FullMap, Handheld };
-
+// The whole island at once. The view is as big as the board, in pixels: a
+// 32x32 board is 1024 x 1024 logical pixels, which SDL scales into the window.
 constexpr int kFullW     = Grid::kClassic * kTileSize;   // 512, a classic board
 constexpr int kFullH     = Grid::kClassic * kTileSize;   // 512
-constexpr int kViewCells = 10;
-constexpr int kViewRows  = 12;
-constexpr int kHandheldW = kViewCells * kTileSize;  // 320
-constexpr int kHandheldH = kViewRows * kTileSize;   // 384
 
 class Renderer {
 public:
     bool init(SDL_Renderer* sdl, const std::string& assetRoot);
-
-    void setViewMode(ViewMode m) { view_ = m; }
-    ViewMode viewMode() const { return view_; }
-    void toggleViewMode() { view_ = view_ == ViewMode::FullMap ? ViewMode::Handheld : ViewMode::FullMap; }
 
     // Size of the board in cells: the level's while one is shown, the classic
     // 16x16 on the other screens. The app sets it and then redoes the layout.
@@ -36,8 +25,12 @@ public:
     int boardW() const { return boardW_; }
     int boardH() const { return boardH_; }
 
-    int logicalWidth() const  { return view_ == ViewMode::FullMap ? boardW_ * kTileSize : kHandheldW; }
-    int logicalHeight() const { return view_ == ViewMode::FullMap ? boardH_ * kTileSize : kHandheldH; }
+    int logicalWidth() const  { return boardW_ * kTileSize; }
+    int logicalHeight() const { return boardH_ * kTileSize; }
+
+    // Where the timer starts, in logical pixels from the left edge: the web
+    // page keeps its Back button in the top left corner of the board.
+    void setHudLeft(int x) { hudLeft_ = std::max(4, x); }
 
     void clear();
     void present();
@@ -57,7 +50,6 @@ public:
     const TextureCache& textures() const { return tex_; }
 
 private:
-    void updateCamera(const Game& game);
     void drawTiles(const Game& game, int frameTick);
     void drawPlayer(const Game& game);
     void drawHud(const Game& game);
@@ -67,11 +59,9 @@ private:
 
     SDL_Renderer* r_ = nullptr;
     TextureCache tex_;
-    ViewMode view_ = ViewMode::FullMap;
     int boardW_ = Grid::kClassic;
     int boardH_ = Grid::kClassic;
-    int camX_ = 0;
-    int camY_ = 0;
+    int hudLeft_ = 4;
 };
 
 }  // namespace bc::gfx

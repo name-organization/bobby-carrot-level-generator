@@ -94,9 +94,31 @@
     .choice { display: flex; gap: 8px; justify-content: center; }
     .choice .btn { min-width: 0; padding: 6px 12px; }
     .choice .btn[aria-pressed="true"] { color: #f0b46a; text-decoration: underline; }
+    /* What is being played, over the board. */
+    #level-title { text-align: center; line-height: 1.3; }
+    #level-kind { font-size: 16px; font-weight: bold; letter-spacing: .04em; }
+    #level-params { color: var(--dim); }
+    /* Back, in the top left corner of the board, over the pages too. Its
+       width is fixed: the timer of the board starts right of it
+       (layoutBack). */
+    #btn-back {
+      position: absolute; z-index: 5; width: 84px; padding: 4px 0;
+      font: inherit; color: var(--ink); cursor: pointer;
+      background: rgba(27, 33, 23, .85); border: 1px solid #36422c;
+      border-bottom-width: 2px; border-radius: 6px;
+    }
+    #btn-back:hover, #btn-back:focus-visible { border-color: #c7792f; outline: none; }
+    #btn-back:active { transform: translateY(1px); border-bottom-width: 1px; }
   </style>
 </head>
 <body>
+
+<!-- What is being played, written by onLevelInfo: "Original level 5", or
+     "Generated level" over its size, difficulty and seed. -->
+<header id="level-title" class="hidden">
+  <div id="level-kind"></div>
+  <div id="level-params" class="note"></div>
+</header>
 
 <div id="stage">
   <canvas id="canvas" tabindex="-1" oncontextmenu="event.preventDefault()"></canvas>
@@ -141,6 +163,9 @@
       <button class="btn" id="btn-seed-back" type="button">Back</button>
     </form>
   </div>
+  <!-- Back, on every screen but the start page: what Esc does there. -->
+  <button id="btn-back" class="hidden" type="button" tabindex="-1" aria-label="Back (Esc)"
+          title="Back (Esc)">← Back</button>
   <div id="loader">
     <div>
       <div id="status">loading…</div>
@@ -166,7 +191,8 @@
        13 = Enter, 27 = Esc, 1073741903..1073741906 = Right, Left, Down, Up.
        data-show lists the screens an item is shown on: play (built-in level),
        gen (generated level), select (level select), end (ending).
-       Rows: playing the level, choosing levels, going back, view and sound. -->
+       Rows: playing the level; this level and the next ones; going back;
+       sound. -->
   <div class="row">
     <span data-show="play gen"><button class="key" type="button" tabindex="-1" data-key="1073741906">↑</button><button class="key" type="button" tabindex="-1" data-key="1073741905">↓</button><button class="key" type="button" tabindex="-1" data-key="1073741904">←</button><button class="key" type="button" tabindex="-1" data-key="1073741903">→</button> move</span>
     <span data-show="select"><button class="key" type="button" tabindex="-1" data-key="1073741906">↑</button><button class="key" type="button" tabindex="-1" data-key="1073741905">↓</button><button class="key" type="button" tabindex="-1" data-key="1073741904">←</button><button class="key" type="button" tabindex="-1" data-key="1073741903">→</button> choose</span>
@@ -178,15 +204,15 @@
   <div class="row">
     <span data-show="gen"><button class="key" type="button" tabindex="-1" data-key="103">G</button> another level</span>
     <span data-show="gen"><button class="key" type="button" tabindex="-1" data-key="101">E</button> copy link to level</span>
-    <span data-show="gen"><button class="key" type="button" tabindex="-1" data-key="110">N</button> size / difficulty</span>
-    <span data-show="play select"><button class="key" type="button" tabindex="-1" data-key="116">T</button> carrot/egg mode</span>
+    <span data-show="play select"><button class="key" type="button" tabindex="-1" data-key="116">T</button> carrot / egg levels</span>
   </div>
   <div class="row">
-    <span data-show="play gen"><button class="key" type="button" tabindex="-1" data-key="27">Esc</button> level list</span>
-    <span data-show="play gen select end"><button class="key" type="button" tabindex="-1" data-key="113">Q</button> main menu</span>
+    <span data-show="play"><button class="key" type="button" tabindex="-1" data-key="27">Esc</button> level list</span>
+    <span data-show="gen"><button class="key" type="button" tabindex="-1" data-key="27">Esc</button> new level: size, difficulty</span>
+    <span data-show="select end"><button class="key" type="button" tabindex="-1" data-key="27">Esc</button> main menu</span>
+    <span data-show="play gen"><button class="key" type="button" tabindex="-1" data-key="113">Q</button> main menu</span>
   </div>
   <div class="row">
-    <span data-show="play gen select end"><button class="key" type="button" tabindex="-1" data-key="102">F</button> view</span>
     <span data-show="play gen select end"><button class="key" type="button" tabindex="-1" data-key="109">M</button> mute</span>
     <span data-show="play gen select end"><button class="key" type="button" tabindex="-1" data-key="118">V</button> sound settings</span>
   </div>
@@ -203,6 +229,7 @@
   const gameFooter = document.getElementById('game-footer');
   const navFooter = document.getElementById('nav-footer');
   const $ = (id) => document.getElementById(id);
+  const backButton = $('btn-back');
 
   // Screen numbers match App::Screen in src/platform/app.hpp.
   const SCREEN_TITLE = 0;
@@ -454,6 +481,9 @@
     const page = activePage();
     navFooter.classList.toggle('hidden', !page);
     gameFooter.classList.toggle('hidden', !!page || screenNow === SCREEN_TITLE);
+    // Back: on every screen but the start page, once the game is loaded
+    backButton.classList.toggle('hidden',
+                                page === menuPage || !loader.classList.contains('hidden'));
     if (page) {
       navFooter.querySelectorAll('[data-pages]').forEach((item) => {
         item.classList.toggle('hidden', !item.dataset.pages.split(' ').includes(page.name));
@@ -465,6 +495,42 @@
     } else {
       canvas.focus();
     }
+  }
+
+  // --- back button and the title over the board ---------------------------
+  // Back does what Esc does where it is: closes the page that is open (back to
+  // where it was opened from), otherwise goes back from the game's screen.
+  backButton.addEventListener('mousedown', (e) => e.preventDefault());  // keep the focus
+  backButton.addEventListener('click', () => {
+    const page = activePage();
+    if (page) { if (page.back) page.back(); }
+    else pressGameKey(27);
+  });
+  // The button sits in the top left corner of the board (CSS); the board's
+  // timer starts right of it. The board is boardPx logical pixels wide and
+  // drawn canvas.clientWidth CSS pixels wide.
+  const BACK_RIGHT = 8 + 84 + 8;  // CSS px: margin, button, gap
+  let boardPx = 512;
+  function layoutBack() {
+    backButton.style.left = '8px';
+    backButton.style.top = '8px';
+    if (!canvas.clientWidth || !Module._bc_set_hud_left) return;
+    Module._bc_set_hud_left(Math.ceil(BACK_RIGHT * boardPx / canvas.clientWidth));
+  }
+  window.addEventListener('resize', layoutBack);
+  if (window.ResizeObserver) new ResizeObserver(layoutBack).observe(canvas);
+
+  const DIFFICULTIES = ['Easy', 'Medium', 'Hard'];
+  // kind: 0 nothing, 1 shipped carrot level, 2 shipped egg level, 3 generated
+  function showLevelInfo(kind, number, size, difficulty, seed, px) {
+    boardPx = px || boardPx;
+    $('level-title').classList.toggle('hidden', kind === 0);
+    $('level-kind').textContent = kind === 3 ? 'Generated level'
+        : (kind === 2 ? 'Original egg level ' : 'Original level ') + number;
+    $('level-params').textContent = kind === 3
+        ? size + ' × ' + size + ' · ' + DIFFICULTIES[difficulty] + ' · seed ' + seed : '';
+    $('level-params').classList.toggle('hidden', kind !== 3);
+    layoutBack();
   }
 
   // Only the key hints that work on the current screen are shown.
@@ -571,7 +637,7 @@
       }
     }],
 
-    postRun: [() => { loader.classList.add('hidden'); canvas.focus(); }],
+    postRun: [() => { loader.classList.add('hidden'); refresh(); layoutBack(); }],
     // Called by App::reportScreen() whenever the game changes screen, or a
     // generated level replaces a built-in one or the other way round.
     onScreenChange: (screen, generated) => {
@@ -588,6 +654,8 @@
     // Called by App::reportAudio() at start and whenever the volumes or mute
     // change, from the Settings page or the M key.
     onAudioChange: showAudio,
+    // Called by App::reportLevelInfo() whenever the level on screen changes.
+    onLevelInfo: showLevelInfo,
     toggleSettings: () => toggleSettings(),
     askSeed: openSeedDialog,
     print: (...a) => console.log(...a),

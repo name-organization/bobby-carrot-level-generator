@@ -36,9 +36,9 @@ public:
     SDL_Renderer* sdlRenderer() { return renderer_; }
     gfx::Renderer& gfx() { return gfx_; }
 
-    // Changing the view also resizes the window and the logical viewport, so
-    // it has to go through the app rather than straight to the renderer.
-    void setViewMode(gfx::ViewMode m);
+    // The web page's Back button covers the top left corner of the board:
+    // the timer starts this many logical pixels from the left edge.
+    void setHudLeft(int x) { gfx_.setHudLeft(x); }
 
     // Actions behind the web page's buttons and the G key. A generated level
     // is generatedSize_ cells a side and of generatedDifficulty_: those of the
@@ -49,11 +49,10 @@ public:
     // which the next ones (G, a finished level) keep. A size that is not one
     // of isGeneratedSize() keeps the current one.
     void generateLevel(unsigned int seed, int size, Difficulty difficulty);
-    // The "Generate level" button of the start page and the N key in a
-    // generated level: the web page opens the New level window (map size,
-    // difficulty, a random seed or a given one), which then calls
-    // generateLevel(). Without the page (native builds) it generates a random
-    // level at once.
+    // The "Generate level" button of the start page: the web page opens the
+    // New level window (map size, difficulty, a random seed or a given one),
+    // which then calls generateLevel(). Without the page (native builds) it
+    // generates a random level at once.
     void askToGenerate();
     // Sides a generated map can have: 16, 24 or 32 cells.
     static bool isGeneratedSize(int size);
@@ -94,9 +93,12 @@ private:
     void applyAudio();
     void reportAudio();
     void reportLevelUrl();
+    void reportLevelInfo();
     // A generated level is on screen (playing it or its "cleared" banner):
-    // where G and N do their generated-level things.
+    // where G makes another one and Esc opens the New level window.
     bool onGeneratedLevel() const;
+    // Opens the web page's New level window; false without the page.
+    bool openNewLevelWindow();
 
     SDL_Window* window_ = nullptr;
     SDL_Renderer* renderer_ = nullptr;
@@ -116,6 +118,14 @@ private:
     unsigned int reportedSeed_ = 0;  // seed last put into the page address
     int reportedSize_ = 0;
     int reportedDifficulty_ = -1;  // -1: none in the address
+    // What the page shows above the board: kind (0 none, 1 shipped carrot
+    // level, 2 shipped egg level, 3 generated), level number, size,
+    // difficulty and seed; -1 kind: not told yet.
+    int reportedKind_ = -1;
+    int reportedNumber_ = 0;
+    unsigned int reportedInfoSeed_ = 0;
+    int reportedInfoSize_ = 0;
+    int reportedInfoDifficulty_ = 0;
     Mode mode_ = Mode::Normal;
     int selected_ = 0;
     int frameTick_ = 0;

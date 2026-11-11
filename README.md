@@ -21,15 +21,21 @@ Game available at [http://localhost:8080](http://localhost:8080)
     or **Enter seed** and type one (1 … 4294967295) to get that seed's level, or
   - **Select level** opens the list: click a level number. Levels unlock one
     by one, and progress is saved in the browser.
-3. Collect every carrot (in egg levels, walk over every patch of grass). The
-   counter in the top right shows how many are left.
+3. Over the board it says what you play: "Original level 5", or "Generated
+   level" with its map size, difficulty and seed. Collect every carrot (in egg
+   levels, walk over every patch of grass). The counter in the top right shows
+   how many are left.
 4. Move with the arrow keys; on a phone, swipe.
 5. Stuck? Press <kbd>H</kbd> to see the path to the exit.
 6. Board turned red? The level can't be finished any more: press <kbd>R</kbd>
    to restart. If Bobby falls into a hole, the level restarts by itself.
 7. Walk onto the exit when it opens.
 8. The next level starts by itself.
-9. Press <kbd>Q</kbd> to go back to the start page.
+9. **← Back** in the top left corner of the board, or <kbd>Esc</kbd>, goes
+   back: from an original level to the level list, from a generated level to
+   the New level window (to change the size or the difficulty; Back there
+   returns to the level), from the list to the start page. <kbd>Q</kbd> goes
+   to the start page from anywhere.
 10. **Settings** on the start page, or <kbd>V</kbd> anywhere, sets the music
     and sound volume and mutes the game. Opened over a level, it pauses the
     level, which goes on where it was when Settings closes. The settings are
@@ -50,12 +56,10 @@ listed under the game; each of them can also be clicked. All keys:
 | <kbd>H</kbd> | show or hide the hint |
 | <kbd>R</kbd> | restart the level |
 | <kbd>G</kbd> | in a generated level: another one of the same map size and difficulty, with a random seed |
-| <kbd>N</kbd> | in a generated level: the New level window, to change the map size or the difficulty or to enter a seed (pauses the level); in a shipped level: the next one |
-| <kbd>T</kbd> | carrot / egg levels (not in a generated level) |
-| <kbd>E</kbd> | copy a link to the generated level (its seed, map size and difficulty) |
-| <kbd>Esc</kbd> | back: from a level to the level list, from the list to the main menu; closes Settings (back to the level) and New level |
+| <kbd>E</kbd> | in a generated level: copy a link to it (its seed, map size and difficulty) |
+| <kbd>T</kbd> | carrot / egg levels (on the level list and in an original level) |
+| <kbd>Esc</kbd> | back, like **← Back**: from an original level to the level list; from a generated level to the New level window (the level pauses under it); from the list to the main menu; closes Settings and New level, back to where they were opened |
 | <kbd>Q</kbd> | main menu |
-| <kbd>F</kbd> | whole map / scrolling close-up view |
 | <kbd>M</kbd> | sound on / off |
 | <kbd>V</kbd> | sound settings: music and sound volume, mute (pauses the level) |
 

@@ -135,11 +135,6 @@ void App::syncBoard() {
     applyLayout();
 }
 
-void App::setViewMode(gfx::ViewMode m) {
-    gfx_.setViewMode(m);
-    applyLayout();
-}
-
 void App::forceLevel(Mode mode, int index) {
     mode_ = mode;
     startLevel(mode, index);
@@ -179,16 +174,20 @@ bool App::onGeneratedLevel() const {
     return (screen_ == Screen::Play || screen_ == Screen::Cleared) && game_.levelIndex() < 0;
 }
 
-void App::askToGenerate() {
+bool App::openNewLevelWindow() {
 #ifdef __EMSCRIPTEN__
-    const bool asked = EM_ASM_INT({
+    return EM_ASM_INT({
         if (!Module.askSeed) return 0;
         Module.askSeed($0, $1);
         return 1;
-    }, generatedSize_, static_cast<int>(generatedDifficulty_));
-    if (asked) return;
+    }, generatedSize_, static_cast<int>(generatedDifficulty_)) != 0;
+#else
+    return false;
 #endif
-    generateLevel();
+}
+
+void App::askToGenerate() {
+    if (!openNewLevelWindow()) generateLevel();
 }
 
 bool App::isGeneratedSize(int size) {
@@ -300,6 +299,37 @@ void App::reportLevelUrl() {
 #endif
 }
 
+// The page writes over the board what is being played: "Original level 5" or
+// "Generated level" with its size, difficulty and seed.
+void App::reportLevelInfo() {
+    const bool onLevel = screen_ == Screen::Play || screen_ == Screen::Cleared;
+    int kind = 0, number = 0, size = 0, difficulty = 0;
+    unsigned int seed = 0;
+    if (onLevel && game_.levelIndex() >= 0) {
+        kind = game_.mode() == Mode::Normal ? 1 : 2;
+        number = game_.levelIndex() + 1;
+    } else if (onLevel && game_.seed() != 0) {
+        kind = 3;
+        size = game_.generatedWidth();
+        difficulty = static_cast<int>(game_.generatedDifficulty());
+        seed = game_.seed();
+    }
+    if (kind == reportedKind_ && number == reportedNumber_ && seed == reportedInfoSeed_ &&
+        size == reportedInfoSize_ && difficulty == reportedInfoDifficulty_)
+        return;
+    reportedKind_ = kind;
+    reportedNumber_ = number;
+    reportedInfoSeed_ = seed;
+    reportedInfoSize_ = size;
+    reportedInfoDifficulty_ = difficulty;
+#ifdef __EMSCRIPTEN__
+    // the board's width in logical pixels, for the Back button (setHudLeft)
+    const int boardPx = game_.grid().w * kTileSize;
+    EM_ASM({ if (Module.onLevelInfo) Module.onLevelInfo($0, $1, $2, $3, $4 >>> 0, $5); },
+           kind, number, size, difficulty, seed, boardPx);
+#endif
+}
+
 void App::rememberProgress() {
     const int slot = (mode_ == Mode::Normal ? 0 : 30) + game_.levelIndex();
     if (slot >= 0 && slot < 50) {
@@ -393,11 +423,19 @@ void App::onConfirm() {
     }
 }
 
+// Esc and the web page's Back button.
 void App::onBack() {
     switch (screen_) {
         case Screen::Play:
         case Screen::Cleared:
-            screen_ = Screen::Select;
+            // a generated level goes back to the New level window, over the
+            // level (natively, without the window, to the main menu); a
+            // shipped one to the level list
+            if (game_.levelIndex() >= 0) {
+                screen_ = Screen::Select;
+            } else if (!openNewLevelWindow()) {
+                goToMainMenu();
+            }
             break;
         case Screen::Select:
             screen_ = Screen::Title;
@@ -443,7 +481,6 @@ void App::onKey(SDL_Keycode key) {
         case SDLK_ESCAPE: case SDLK_BACKSPACE: onBack(); break;
         case SDLK_r: if (screen_ == Screen::Play) game_.restart(); break;
         case SDLK_h: if (screen_ == Screen::Play) game_.toggleHint(); break;
-        case SDLK_f: gfx_.toggleViewMode(); applyLayout(); break;
         case SDLK_m: mixer_.toggleMuted(); save_.muted = mixer_.muted(); saveProgress(save_); break;
         // the Settings page of the web page (music, sounds, mute); the level
         // is paused under it, see setPaused()
@@ -453,14 +490,9 @@ void App::onKey(SDL_Keycode key) {
 #endif
             break;
         case SDLK_n:
-            // in a generated level: the New level window, to change the map
-            // size or the difficulty; in a shipped one: the next level
-            if (onGeneratedLevel()) {
-                askToGenerate();
-            } else if (screen_ == Screen::Play && game_.levelIndex() >= 0 &&
-                       game_.levelIndex() + 1 < Level::levelCount(mode_)) {
+            if (screen_ == Screen::Play && game_.levelIndex() >= 0 &&
+                game_.levelIndex() + 1 < Level::levelCount(mode_))
                 startLevel(mode_, game_.levelIndex() + 1);
-            }
             break;
         case SDLK_p:
             if (screen_ == Screen::Play && game_.levelIndex() > 0)
@@ -739,6 +771,7 @@ void App::frame() {
     reportScreen();
     reportAudio();
     reportLevelUrl();
+    reportLevelInfo();
 }
 
 }  // namespace bc::platform

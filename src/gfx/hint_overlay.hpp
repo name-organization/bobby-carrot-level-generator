@@ -17,7 +17,6 @@
 
 namespace bc::gfx {
 
-// camX/camY: top-left of the visible board in pixels, as the renderer uses.
-void drawHintOverlay(SDL_Renderer* r, const Game& game, int camX, int camY);
+void drawHintOverlay(SDL_Renderer* r, const Game& game);
 
 }  // namespace bc::gfx

@@ -62,12 +62,11 @@ void frameCallback(void* arg) {
 // Offscreen capture used to eyeball the renderer without a display, and handy
 // for anyone wanting a quick look at a level: --shot normal 1 out.png
 int screenshot(const std::string& assetRoot, bc::Mode mode, int level, int warmupTicks,
-               const char* outPath, bool handheld) {
+               const char* outPath) {
     SDL_SetHint(SDL_HINT_VIDEODRIVER, "dummy");
     bc::platform::App app;
     if (!app.init(assetRoot, /*headless=*/true)) return 1;
 
-    if (handheld) app.setViewMode(bc::gfx::ViewMode::Handheld);
     app.forceLevel(mode, level);
     for (int i = 0; i < warmupTicks; ++i) app.tick();
     app.draw();
@@ -106,6 +105,8 @@ EMSCRIPTEN_KEEPALIVE void bc_generate_level(unsigned int seed, int size, int dif
     if (difficulty < 0 || difficulty > 2) difficulty = 1;
     g_app.generateLevel(seed, size, static_cast<bc::Difficulty>(difficulty));
 }
+// The Back button over the board: where the timer starts, in logical pixels.
+EMSCRIPTEN_KEEPALIVE void bc_set_hud_left(int x) { g_app.setHudLeft(x); }
 // The start page's "Generate level": opens the New level window.
 EMSCRIPTEN_KEEPALIVE void bc_ask_to_generate() { g_app.askToGenerate(); }
 EMSCRIPTEN_KEEPALIVE void bc_select_level()   { g_app.openLevelSelect(); }
@@ -122,7 +123,6 @@ EMSCRIPTEN_KEEPALIVE void bc_set_paused(int paused) { g_app.setPaused(paused != 
 
 int main(int argc, char** argv) {
     std::string assetRoot = "assets/v1";
-    bool handheld = false;
     // A shared generated level: its seed, map side and difficulty, as text.
     std::string startSeed;
     std::string startSize;
@@ -140,10 +140,6 @@ int main(int argc, char** argv) {
         if (difficulty.isString()) startDifficulty = difficulty.as<std::string>();
     }
 #endif
-
-    for (int i = 1; i < argc; ++i) {
-        if (std::strcmp(argv[i], "--handheld") == 0) handheld = true;
-    }
 
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--assets") == 0 && i + 1 < argc) {
@@ -164,13 +160,12 @@ int main(int argc, char** argv) {
                 std::strcmp(argv[i + 1], "egg") == 0 ? bc::Mode::Egg : bc::Mode::Normal;
             const int level = std::atoi(argv[i + 2]) - 1;
             const int ticks = std::atoi(argv[i + 3]);
-            return screenshot(assetRoot, mode, level, ticks, argv[i + 4], handheld);
+            return screenshot(assetRoot, mode, level, ticks, argv[i + 4]);
         }
 #endif
     }
 
     if (!g_app.init(assetRoot, /*headless=*/false)) return 1;
-    if (handheld) g_app.setViewMode(bc::gfx::ViewMode::Handheld);
 
     // A link to a generated level starts in it. Without a size it is the
     // classic 16 x 16; without a difficulty, the level the link gave before
