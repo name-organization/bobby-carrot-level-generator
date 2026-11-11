@@ -11,7 +11,7 @@ struct SaveData {
     int unlockedEgg = 1;
     int bestSeconds[50] = {};  // 0 means "never finished"
     bool muted = false;
-    // Percent, 0 to 100, in steps of 10: the Settings page and the +/- keys.
+    // Percent, 0 to 100, in steps of 10, set on the Settings page.
     int musicVolume = 100;
     int soundVolume = 100;
 };

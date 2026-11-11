@@ -54,6 +54,9 @@ public:
     // The Settings page: music and sound volume in percent (0..100) and mute.
     // Saved at once. A new sound volume plays a sample at it.
     void setAudio(int musicPercent, int soundPercent, bool muted);
+    // While the Settings page is open over a level, the level stands still:
+    // no moves, no clock, no "level cleared" countdown.
+    void setPaused(bool paused);
 
     // Test hooks used by the screenshot tool.
     void forceLevel(Mode mode, int index);
@@ -78,8 +81,6 @@ private:
     void playEventSounds(unsigned events);
     void rememberProgress();
     void reportScreen();
-    // +/- keys: both volumes up or down by one step.
-    void changeVolume(int deltaPercent);
     void applyAudio();
     void reportAudio();
 
@@ -108,6 +109,7 @@ private:
     // Side of generated maps, in cells: B cycles 16, 24, 32.
     int generatedSize_ = Grid::kClassic;
     bool running_ = true;
+    bool paused_ = false;
     bool headless_ = false;
     bool touchSeen_ = false;
     float touchFade_ = 0.0f;

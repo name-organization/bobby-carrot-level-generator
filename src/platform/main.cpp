@@ -102,6 +102,8 @@ EMSCRIPTEN_KEEPALIVE void bc_press_key(int key) { g_app.pressKey(key); }
 EMSCRIPTEN_KEEPALIVE void bc_set_audio(int music, int sound, int muted) {
     g_app.setAudio(music, sound, muted != 0);
 }
+// 1 while the Settings page is open
+EMSCRIPTEN_KEEPALIVE void bc_set_paused(int paused) { g_app.setPaused(paused != 0); }
 }
 #endif
 

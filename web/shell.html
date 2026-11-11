@@ -148,31 +148,32 @@
 
 <footer id="game-footer" class="hidden">
   <!-- data-key is the SDL keycode the label stands for: the letter's code,
-       13 = Enter, 27 = Esc, 43 = +, 45 = -,
-       1073741903..1073741906 = Right, Left, Down, Up.
+       13 = Enter, 27 = Esc, 1073741903..1073741906 = Right, Left, Down, Up.
        data-show lists the screens an item is shown on: play (built-in level),
-       gen (generated level), select (level select), end (ending). -->
+       gen (generated level), select (level select), end (ending).
+       Rows: playing the level, choosing levels, going back, view and sound. -->
   <div class="row">
-    <span data-show="play gen"><button class="key" type="button" tabindex="-1" data-key="104">H</button> show hint</span>
-    <span data-show="play gen"><button class="key" type="button" tabindex="-1" data-key="114">R</button> restart</span>
-    <span data-show="play gen"><button class="key" type="button" tabindex="-1" data-key="103">G</button> generate level</span>
-    <span data-show="gen select"><button class="key" type="button" tabindex="-1" data-key="98">B</button> map size</span>
+    <span data-show="play gen"><button class="key" type="button" tabindex="-1" data-key="1073741906">↑</button><button class="key" type="button" tabindex="-1" data-key="1073741905">↓</button><button class="key" type="button" tabindex="-1" data-key="1073741904">←</button><button class="key" type="button" tabindex="-1" data-key="1073741903">→</button> move</span>
     <span data-show="select"><button class="key" type="button" tabindex="-1" data-key="1073741906">↑</button><button class="key" type="button" tabindex="-1" data-key="1073741905">↓</button><button class="key" type="button" tabindex="-1" data-key="1073741904">←</button><button class="key" type="button" tabindex="-1" data-key="1073741903">→</button> choose</span>
     <span data-show="select"><button class="key" type="button" tabindex="-1" data-key="13">Enter</button> play</span>
     <span data-show="end"><button class="key" type="button" tabindex="-1" data-key="13">Enter</button> continue</span>
+    <span data-show="play gen"><button class="key" type="button" tabindex="-1" data-key="104">H</button> show hint</span>
+    <span data-show="play gen"><button class="key" type="button" tabindex="-1" data-key="114">R</button> restart</span>
+  </div>
+  <div class="row">
+    <span data-show="play gen select"><button class="key" type="button" tabindex="-1" data-key="103">G</button> generate level</span>
+    <span data-show="gen select"><button class="key" type="button" tabindex="-1" data-key="98">B</button> map size</span>
     <span data-show="play select"><button class="key" type="button" tabindex="-1" data-key="116">T</button> carrot/egg mode</span>
     <span data-show="gen"><button class="key" type="button" tabindex="-1" data-key="101">E</button> copy link to level</span>
   </div>
   <div class="row">
-    <span data-show="play gen"><button class="key" type="button" tabindex="-1" data-key="1073741906">↑</button><button class="key" type="button" tabindex="-1" data-key="1073741905">↓</button><button class="key" type="button" tabindex="-1" data-key="1073741904">←</button><button class="key" type="button" tabindex="-1" data-key="1073741903">→</button> move</span>
     <span data-show="play gen"><button class="key" type="button" tabindex="-1" data-key="27">Esc</button> level list</span>
-    <span data-show="select"><button class="key" type="button" tabindex="-1" data-key="103">G</button> generate level</span>
     <span data-show="play gen select end"><button class="key" type="button" tabindex="-1" data-key="113">Q</button> main menu</span>
   </div>
   <div class="row">
     <span data-show="play gen select end"><button class="key" type="button" tabindex="-1" data-key="102">F</button> view</span>
     <span data-show="play gen select end"><button class="key" type="button" tabindex="-1" data-key="109">M</button> mute</span>
-    <span data-show="play gen select end"><button class="key" type="button" tabindex="-1" data-key="43">+</button><button class="key" type="button" tabindex="-1" data-key="45">−</button> volume</span>
+    <span data-show="play gen select end"><button class="key" type="button" tabindex="-1" data-key="118">V</button> sound settings</span>
   </div>
   <span class="mobile-only">swipe to move, tap the arrows, tap to confirm</span>
 </footer>
@@ -239,9 +240,9 @@
   }
 
   // --- start page -----------------------------------------------------------
-  // G (generate), M (mute) and +/- (volume) still reach the game from here.
+  // G (generate), V (settings) and M (mute) still reach the game from here.
   const menuPage = makePage('menu', [$('btn-generate'), $('btn-select'), $('btn-settings')],
-                            { passKeys: ['g', 'G', 'm', 'M', '+', '=', '-'] });
+                            { passKeys: ['g', 'G', 'v', 'V', 'm', 'M'] });
   // Through the G key, so the game asks for the seed with the map size.
   $('btn-generate').addEventListener('click', () => pressGameKey(103));
   $('btn-select').addEventListener('click', () => {
@@ -252,7 +253,7 @@
   // --- settings -------------------------------------------------------------
   // Music and sound volume, 0..100% in steps of 10, and mute. The game keeps
   // them (saved with the progress) and reports them through onAudioChange,
-  // also when M or +/- change them.
+  // also when M changes mute.
   const VOLUME_STEP = 10;
   const musicSlider = $('vol-music');
   const soundSlider = $('vol-sound');
@@ -260,7 +261,7 @@
   let muted = false;
   const settingsPage = makePage('settings',
       [musicSlider, soundSlider, muteButton, $('btn-settings-back')],
-      { back: closeSettings, backLabel: 'back', passKeys: ['m', 'M', '+', '=', '-'] });
+      { back: closeSettings, backLabel: 'back', passKeys: ['v', 'V', 'm', 'M'] });
 
   function showAudio(music, sound, isMuted) {
     musicSlider.value = music;
@@ -288,14 +289,27 @@
   muteButton.addEventListener('click', () => { muted = !muted; sendAudio(); });
   $('btn-settings-back').addEventListener('click', closeSettings);
 
+  // Opened from the start page or, with V, over a level: the level is paused
+  // underneath and goes on where it was once the page is closed.
+  function setPaused(on) {
+    if (Module._bc_set_paused) Module._bc_set_paused(on ? 1 : 0);
+  }
   function openSettings() {
     settings.classList.remove('hidden');
     settingsPage.index = 0;
+    setPaused(true);
     refresh();
   }
   function closeSettings() {
     settings.classList.add('hidden');
+    setPaused(false);
     refresh();
+  }
+  // The V key, through the game (App::onKey).
+  function toggleSettings() {
+    if (!seedDialog.classList.contains('hidden')) return;
+    if (settings.classList.contains('hidden')) openSettings();
+    else closeSettings();
   }
 
   // --- seed dialog ----------------------------------------------------------
@@ -396,6 +410,10 @@
     document.querySelectorAll('#game-footer [data-show]').forEach((item) => {
       item.classList.toggle('hidden', !item.dataset.show.split(' ').includes(screen));
     });
+    // A row with nothing for this screen would still leave a gap.
+    document.querySelectorAll('#game-footer .row').forEach((row) => {
+      row.classList.toggle('hidden', !row.querySelector('[data-show]:not(.hidden)'));
+    });
   }
 
   // --- keys -----------------------------------------------------------------
@@ -495,14 +513,14 @@
                    : screen === SCREEN_END ? 'end'
                    : generated ? 'gen' : 'play');
       menu.classList.toggle('hidden', !onTitle);
-      if (!onTitle) settings.classList.add('hidden');
       // Off the pages the focus goes to the game, so Space or Enter there
       // does not press a button again.
       refresh();
     },
     // Called by App::reportAudio() at start and whenever the volumes or mute
-    // change, from the Settings page or the M and +/- keys.
+    // change, from the Settings page or the M key.
     onAudioChange: showAudio,
+    toggleSettings: () => toggleSettings(),
     askSeed: openSeedDialog,
     print: (...a) => console.log(...a),
     printErr: (...a) => console.warn(...a),

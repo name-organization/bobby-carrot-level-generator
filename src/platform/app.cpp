@@ -15,7 +15,6 @@ namespace {
 constexpr double kStepSeconds = 1.0 / kTicksPerSecond;
 constexpr int kClearedFrames = 90;
 constexpr float kSwipeThreshold = 0.035f;  // fraction of the window
-constexpr int kVolumeStep = 10;            // percent, one +/- press
 // The original game has one music track, the title theme; it loops behind
 // every screen but the ending, which has a jingle of its own.
 constexpr const char* kMusic = "title";
@@ -233,17 +232,14 @@ void App::setAudio(int musicPercent, int soundPercent, bool muted) {
     if (soundChanged) mixer_.playSound("carrot");
 }
 
-void App::changeVolume(int deltaPercent) {
-    save_.musicVolume = std::clamp(save_.musicVolume + deltaPercent, 0, 100);
-    save_.soundVolume = std::clamp(save_.soundVolume + deltaPercent, 0, 100);
-    applyAudio();
-    saveProgress(save_);
-    std::printf("[audio] music %d%%, sounds %d%%\n", save_.musicVolume, save_.soundVolume);
-    mixer_.playSound("carrot");  // so the new volume can be heard
+void App::setPaused(bool paused) {
+    paused_ = paused;
+    held_ = Dir::None;
+    pendingTap_ = Dir::None;
 }
 
-// The Settings page on the web shows the volumes and mute, which the M and
-// +/- keys change too.
+// The Settings page on the web shows the volumes and mute, which the M key
+// changes too.
 void App::reportAudio() {
     const bool muted = mixer_.muted();
     if (save_.musicVolume == reportedMusic_ && save_.soundVolume == reportedSound_ &&
@@ -403,9 +399,13 @@ void App::onKey(SDL_Keycode key) {
         case SDLK_h: if (screen_ == Screen::Play) game_.toggleHint(); break;
         case SDLK_f: gfx_.toggleViewMode(); applyLayout(); break;
         case SDLK_m: mixer_.toggleMuted(); save_.muted = mixer_.muted(); saveProgress(save_); break;
-        // '+' is Shift and '=' on most keyboards, so '=' counts as '+' too.
-        case SDLK_PLUS: case SDLK_EQUALS: case SDLK_KP_PLUS: changeVolume(kVolumeStep); break;
-        case SDLK_MINUS: case SDLK_KP_MINUS: changeVolume(-kVolumeStep); break;
+        // the Settings page of the web page (music, sounds, mute); the level
+        // is paused under it, see setPaused()
+        case SDLK_v:
+#ifdef __EMSCRIPTEN__
+            EM_ASM({ if (Module.toggleSettings) Module.toggleSettings(); });
+#endif
+            break;
         case SDLK_n:
             if (screen_ == Screen::Play &&
                 game_.levelIndex() + 1 < Level::levelCount(mode_))
@@ -597,6 +597,7 @@ void App::stepLogic() {
     // Browsers start audio only after the first key press or tap, so the
     // music starts then; from there it keeps playing across screens.
     if (mixer_.unlocked() && screen_ != Screen::End) mixer_.playMusic(kMusic, kMusicVolume);
+    if (paused_) return;
     touchFade_ = touchSeen_ ? std::min(1.0f, touchFade_ + 0.05f)
                             : std::max(0.0f, touchFade_ - 0.02f);
 
