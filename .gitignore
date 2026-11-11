@@ -5,3 +5,4 @@ sdl-release*.zip
 __pycache__/
 build-hint/
 build/
+.cache/
