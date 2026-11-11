@@ -98,6 +98,12 @@ EMSCRIPTEN_KEEPALIVE void bc_generate_level(unsigned int seed) { g_app.generateL
 EMSCRIPTEN_KEEPALIVE void bc_select_level()   { g_app.openLevelSelect(); }
 // key is an SDL keycode: the lower-case letter's code, or 27 for Escape.
 EMSCRIPTEN_KEEPALIVE void bc_press_key(int key) { g_app.pressKey(key); }
+// The Settings page: volumes in percent, 0..100; muted 0 or 1.
+EMSCRIPTEN_KEEPALIVE void bc_set_audio(int music, int sound, int muted) {
+    g_app.setAudio(music, sound, muted != 0);
+}
+// 1 while the Settings page is open
+EMSCRIPTEN_KEEPALIVE void bc_set_paused(int paused) { g_app.setPaused(paused != 0); }
 }
 #endif
 

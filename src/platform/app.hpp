@@ -51,6 +51,12 @@ public:
     void goToMainMenu();
     // Same as pressing a non-direction key, for the clickable key labels.
     void pressKey(SDL_Keycode key);
+    // The Settings page: music and sound volume in percent (0..100) and mute.
+    // Saved at once. A new sound volume plays a sample at it.
+    void setAudio(int musicPercent, int soundPercent, bool muted);
+    // While the Settings page is open over a level, the level stands still:
+    // no moves, no clock, no "level cleared" countdown.
+    void setPaused(bool paused);
 
     // Test hooks used by the screenshot tool.
     void forceLevel(Mode mode, int index);
@@ -75,6 +81,8 @@ private:
     void playEventSounds(unsigned events);
     void rememberProgress();
     void reportScreen();
+    void applyAudio();
+    void reportAudio();
     void reportLevelUrl();
 
     SDL_Window* window_ = nullptr;
@@ -88,6 +96,10 @@ private:
     Screen screen_ = Screen::Title;
     int reportedScreen_ = -1;  // last screen told to the web page
     bool reportedGenerated_ = false;
+    // Last volumes and mute told to the web page; -1: not told yet.
+    int reportedMusic_ = -1;
+    int reportedSound_ = -1;
+    bool reportedMuted_ = false;
     unsigned int reportedSeed_ = 0;  // seed last put into the page address
     int reportedSize_ = 0;
     Mode mode_ = Mode::Normal;
@@ -100,6 +112,7 @@ private:
     // Side of generated maps, in cells: B cycles 16, 24, 32.
     int generatedSize_ = Grid::kClassic;
     bool running_ = true;
+    bool paused_ = false;
     bool headless_ = false;
     bool touchSeen_ = false;
     float touchFade_ = 0.0f;

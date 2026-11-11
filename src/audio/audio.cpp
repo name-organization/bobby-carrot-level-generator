@@ -131,7 +131,13 @@ void Mixer::playMusic(const std::string& name, float volume) {
     if (device_ == 0) return;
 
     SDL_LockAudioDevice(device_);
-    music_ = it == clips_.end() ? Voice{} : Voice{&it->second, 0, volume, true, true};
+    if (it == clips_.end()) {
+        music_ = Voice{};
+    } else if (music_.active && music_.clip == &it->second) {
+        music_.volume = volume;
+    } else {
+        music_ = Voice{&it->second, 0, volume, true, true};
+    }
     SDL_UnlockAudioDevice(device_);
 }
 
@@ -142,12 +148,35 @@ void Mixer::stopMusic() {
     SDL_UnlockAudioDevice(device_);
 }
 
+namespace {
+// Ears hear loudness roughly logarithmically: squaring the slider value makes
+// its steps sound about even (50% is about -12 dB) instead of crowding all the
+// change into the bottom of the range.
+float sliderToGain(float v) {
+    v = std::clamp(v, 0.0f, 1.0f);
+    return v * v;
+}
+}  // namespace
+
+void Mixer::setMusicVolume(float v) {
+    if (device_) SDL_LockAudioDevice(device_);
+    musicGain_ = sliderToGain(v);
+    if (device_) SDL_UnlockAudioDevice(device_);
+}
+
+void Mixer::setSoundVolume(float v) {
+    if (device_) SDL_LockAudioDevice(device_);
+    soundGain_ = sliderToGain(v);
+    if (device_) SDL_UnlockAudioDevice(device_);
+}
+
 void Mixer::mix(std::int16_t* out, int frames) {
     std::fill(out, out + static_cast<std::size_t>(frames) * kChannels, 0);
     if (muted_) return;
 
-    auto render = [&](Voice& v) {
+    auto render = [&](Voice& v, float gain) {
         if (!v.active || !v.clip) return;
+        const float volume = v.volume * gain;
         const auto& pcm = v.clip->pcm;
         for (int i = 0; i < frames; ++i) {
             if (v.pos >= pcm.size()) {
@@ -156,15 +185,15 @@ void Mixer::mix(std::int16_t* out, int frames) {
             }
             for (int c = 0; c < kChannels; ++c) {
                 const int idx = i * kChannels + c;
-                const int mixed = out[idx] + static_cast<int>(pcm[v.pos + c] * v.volume);
+                const int mixed = out[idx] + static_cast<int>(pcm[v.pos + c] * volume);
                 out[idx] = static_cast<std::int16_t>(std::clamp(mixed, -32768, 32767));
             }
             v.pos += kChannels;
         }
     };
 
-    render(music_);
-    for (Voice& v : voices_) render(v);
+    render(music_, musicGain_);
+    for (Voice& v : voices_) render(v, soundGain_);
 }
 
 void SDLCALL Mixer::audioCallback(void* userdata, Uint8* stream, int len) {
