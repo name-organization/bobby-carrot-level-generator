@@ -6,6 +6,7 @@
 
 #include "tilechar.hpp"
 #include "tiles.hpp"
+#include "base64.h"
 
 namespace bc {
 namespace {
@@ -180,6 +181,52 @@ std::string Level::pathFor(Mode mode, int index, const std::string& root) {
     std::snprintf(name, sizeof(name), "%s/level/%s%02d.lvl", root.c_str(),
                   mode == Mode::Normal ? "normal" : "egg", index + 1);
     return std::string(name);
+}
+
+std::string Level::encode() const {
+    std::string flattenGrid;
+    flattenGrid.reserve(grid.cells.size());
+
+    for (auto cell : grid.cells) {
+        flattenGrid += static_cast<char>(cell);
+    }
+
+    return base64_encode(flattenGrid);
+}
+
+bool Level::decode(const std::string& base64Str, std::string* error) {
+    std::string decoded;
+    try {
+        decoded = base64_decode(base64Str);
+    } catch (const std::exception& e) {
+        fail(error, std::string("base64: ") + e.what());
+        return false;
+    }
+
+    if (decoded.size() != static_cast<std::size_t>(Grid::kCells)) {
+        char buf[96];
+        std::snprintf(buf, sizeof(buf), "level payload: expected %d bytes, got %zu",
+                      Grid::kCells, decoded.size());
+        fail(error, buf);
+        return false;
+    }
+
+    Grid parsed{};
+    for (int i = 0; i < Grid::kCells; ++i) {
+        const auto tile = static_cast<std::uint8_t>(decoded[i]);
+        if (tile >= kTileCount) {
+            char buf[80];
+            std::snprintf(buf, sizeof(buf), "level payload: unknown tile %u at cell %d",
+                          static_cast<unsigned>(tile), i);
+            fail(error, buf);
+            return false;
+        }
+        parsed.cells[i] = tile;
+    }
+
+    grid = parsed;
+    rescan();
+    return true;
 }
 
 }  // namespace bc
