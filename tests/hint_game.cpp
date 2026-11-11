@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "../src/core/game.hpp"
+#include "../src/core/generator.hpp"
 
 using namespace bc;
 
@@ -52,6 +53,46 @@ const hint::Result* askHint(Game& g) {
 void check(bool ok, const std::string& what) {
     std::printf("%s  %s\n", ok ? "ok  " : "FAIL", what.c_str());
     if (!ok) ++failures;
+}
+
+// Carrot blocks the way the game sees them: 2+ carrots side by side at the
+// start of the level, numbered; -1 for every other cell.
+std::vector<int> carrotBlocks(const Grid& grid) {
+    std::vector<int> block(Grid::kCells, -1);
+    int count = 0;
+    for (int y = 0; y < grid.h; ++y)
+        for (int x = 0; x < grid.w; ++x) {
+            if (grid.at(x, y) != T_CARROT || block[Coord{x, y}.index()] != -1) continue;
+            std::vector<Coord> stack{{x, y}}, cells;
+            block[Coord{x, y}.index()] = count;
+            while (!stack.empty()) {
+                const Coord c = stack.back();
+                stack.pop_back();
+                cells.push_back(c);
+                for (Dir d : {Dir::Up, Dir::Down, Dir::Left, Dir::Right}) {
+                    const Coord n{c.x + dirDX(d), c.y + dirDY(d)};
+                    if (grid.inBounds(n.x, n.y) && grid.at(n) == T_CARROT && block[n.index()] == -1) {
+                        block[n.index()] = count;
+                        stack.push_back(n);
+                    }
+                }
+            }
+            if (cells.size() < 2) block[Coord{x, y}.index()] = -1;
+            else ++count;
+        }
+    return block;
+}
+
+// Whether the level can still be won from `pos` without stepping on `cells`
+// (Bobby may leave `pos` if it is a taken carrot, not come back), with the
+// budget the game re-routes with.
+bool canAvoid(const Grid& grid, Coord pos, const std::vector<Coord>& cells) {
+    Grid around = grid;
+    for (Coord c : cells) around.at(c) = T_DEFAULT_GRASS;
+    if (grid.at(pos) == T_CARROT_TAKEN) around.at(pos) = T_CRACKED;
+    hint::Options options;
+    options.conflictBudget = 50000;
+    return hint::compute(around, pos, {}, options).verdict == hint::Verdict::Winnable;
 }
 
 }  // namespace
@@ -217,12 +258,20 @@ int main(int argc, char** argv) {
     g.update();
     check(g.hint() != nullptr, "toggle: hide and show within one tick still answers");
 
-    // generated levels: after a carrot taken off the path the new route does
-    // not come back to it when the level has a way around, and still wins
-    int aroundOk = 0, aroundBad = 0;
-    for (unsigned seed = 1; seed <= 20; ++seed) {
-        g.loadProcedural(seed);
+    // generated levels: a carrot taken off the path rebuilds the route around
+    // the taken carrots -- at once for a lone carrot or the last of a block,
+    // otherwise once Bobby leaves the block or collects it; until then the
+    // hint only leads back to its route. The rebuilt route keeps off the taken
+    // carrots where it can and still wins.
+    // (the room generator first, then the old random walk, which has more
+    // lone carrots)
+    int lone = 0, deferred = 0, wrong = 0;
+    for (unsigned run = 0; run < 40; ++run) {
+        const unsigned seed = run % 20 + 1;
+        if (run < 20) g.loadProcedural(seed);
+        else g.loadLevel(LevelGenerator::generateRandom(seed));
         settle(g);
+        const std::vector<int> blocks = carrotBlocks(g.grid());
         h = askHint(g);
         if (!h || h->verdict != hint::Verdict::Winnable) continue;
         const std::vector<Dir> plan = h->moves;
@@ -233,32 +282,64 @@ int main(int argc, char** argv) {
             for (std::size_t i = 0; i < k; ++i) move(g, plan[i]);
             if (!g.hint() || g.hintPath().empty()) continue;
             const Coord before = g.player().cell();
+            std::vector<Coord> shown{before};
+            shown.insert(shown.end(), g.hintPath().begin(), g.hintPath().end());
             for (Dir d : {Dir::Up, Dir::Down, Dir::Left, Dir::Right}) {
                 const Coord to{before.x + dirDX(d), before.y + dirDY(d)};
                 if (!g.grid().inBounds(to.x, to.y) || to == g.hintPath().front() ||
                     g.grid().at(to) != T_CARROT)
                     continue;
+                const int b = blocks[to.index()];
+                auto collected = [&] {   // nothing left of block b
+                    for (int i = 0; i < Grid::kCells; ++i)
+                        if (blocks[i] == b && g.grid().cells[i] == T_CARROT) return false;
+                    return true;
+                };
                 move(g, d);
-                if (!g.hint()) { ++aroundBad; break; }
+                if (!(g.player().cell() == to)) break;
+                if (!g.hint()) { ++wrong; break; }
                 if (g.hint()->verdict != hint::Verdict::Winnable) break;
-                Grid around = g.grid();
-                around.at(to) = T_CRACKED;    // may leave the carrot, never return
-                const bool avoidable =
-                    hint::compute(around, to, {}).verdict == hint::Verdict::Winnable;
-                bool back = false;
-                for (Coord c : g.hintPath()) back = back || c == to;
+                bool ok = true;
+                if (b >= 0 && !collected()) {
+                    // not rebuilt yet: the cheap way back to the shown route
+                    hint::Options cheap;
+                    cheap.useSolver = false;
+                    if (hint::compute(g.grid(), to, shown, cheap).verdict ==
+                            hint::Verdict::Winnable &&
+                        g.hint()->stage != hint::Stage::Reference)
+                        ok = false;
+                    // walk the hint until Bobby leaves the block or collects it
+                    for (int i = 0; i < 100 && g.hint() && !g.hint()->moves.empty() &&
+                                    blocks[g.player().cell().index()] == b && !collected();
+                         ++i)
+                        move(g, g.hint()->moves.front());
+                    if (g.levelComplete()) { ++deferred; break; }
+                    if (!g.hint()) { ++wrong; break; }
+                    if (g.hint()->verdict != hint::Verdict::Winnable) break;
+                    ++deferred;
+                } else {
+                    ++lone;
+                }
+                std::vector<Coord> taken;
+                if (b < 0) taken.push_back(to);
+                for (int i = 0; i < Grid::kCells && b >= 0; ++i)
+                    if (blocks[i] == b && g.grid().cells[i] == T_CARROT_TAKEN)
+                        taken.push_back(Coord{i % Grid::kStride, i / Grid::kStride});
+                if (canAvoid(g.grid(), g.player().cell(), taken))
+                    for (Coord c : g.hintPath())
+                        for (Coord t : taken) ok = ok && !(c == t);
                 const std::vector<Dir> route = g.hint()->moves;
                 for (Dir r : route) move(g, r);
                 for (int i = 0; i < 200 && !g.levelComplete(); ++i) g.update();
-                if (g.levelComplete() && !(avoidable && back)) ++aroundOk;
-                else ++aroundBad;
+                if (!ok || !g.levelComplete()) ++wrong;
                 break;
             }
         }
     }
-    check(aroundOk > 0 && aroundBad == 0,
-          "generated: carrots taken off the path are not walked over again (ok " +
-              std::to_string(aroundOk) + ", wrong " + std::to_string(aroundBad) + ")");
+    check(lone > 0 && deferred > 0 && wrong == 0,
+          "generated: carrots taken off the path, rebuilt at once " + std::to_string(lone) +
+              ", after the block " + std::to_string(deferred) + ", wrong " +
+              std::to_string(wrong));
 
     // bigger generated maps: the hint at the start leads to the exit
     for (int size : {24, 32}) {

@@ -89,7 +89,8 @@ public:
     // broken (a spike it needed has fired, say), the solver is asked with a
     // small budget, and only if that runs out does the hint disappear until
     // the next requestHint(). A carrot taken off the path rebuilds the route
-    // so it does not come back to taken carrots where it can avoid them.
+    // so it does not come back to taken carrots where it can avoid them; in a
+    // block of carrots, once the block is collected or Bobby leaves it.
     // Its `moves` always start at Bobby's current cell, in step with hintPath().
     const hint::Result* hint() const { return hintShown_ ? &hint_ : nullptr; }
     // Cells still ahead on the suggested path, the next one first.
@@ -101,8 +102,10 @@ private:
     static constexpr long long kRerouteConflicts = 50000;
 
     void rememberSeed(unsigned int seed, int width, int height);
-    void answerHint(bool rejoinOnly, bool tookCarrot = false);
-    hint::Result routeAroundCarrots(Coord pos) const;
+    void answerHint(bool rejoinOnly, bool tookCarrot = false, int block = -1);
+    hint::Result routeAroundCarrots(Coord pos, int block) const;
+    void findCarrotBlocks();
+    bool blockDone(int block) const;
     void followHint();
     // Learned from the original carrot levels on first use; nullptr if they
     // cannot be read, and the generator then uses its fixed patterns.
@@ -133,6 +136,8 @@ private:
     std::vector<Coord> hintPath_;
     Coord hintCell_{};                    // where Bobby was when hintPath_ was valid
     bool hintShown_ = false;
+    std::vector<int> carrotBlock_;        // cell -> carrot block, -1 if none
+    int pendingBlock_ = -1;               // block whose carrots wait for a re-route
     bool hintRequested_ = false;
 };
 

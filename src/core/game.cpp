@@ -108,6 +108,45 @@ void Game::restart() {
     hintPath_.clear();
     hintShown_ = false;
     hintRequested_ = false;
+    findCarrotBlocks();
+    pendingBlock_ = -1;
+}
+
+// Groups of 2+ carrots next to each other (up, down, left, right), as the
+// level starts. Collected carrots stay in their block.
+void Game::findCarrotBlocks() {
+    carrotBlock_.assign(Grid::kCells, -1);
+    int blocks = 0;
+    std::vector<Coord> stack, cells;
+    for (int y = 0; y < grid_.h; ++y)
+        for (int x = 0; x < grid_.w; ++x) {
+            const Coord c{x, y};
+            if (grid_.at(c) != T_CARROT || carrotBlock_[c.index()] != -1) continue;
+            cells.clear();
+            stack.assign(1, c);
+            carrotBlock_[c.index()] = blocks;
+            while (!stack.empty()) {
+                const Coord cur = stack.back();
+                stack.pop_back();
+                cells.push_back(cur);
+                for (Dir d : {Dir::Up, Dir::Down, Dir::Left, Dir::Right}) {
+                    const Coord n{cur.x + dirDX(d), cur.y + dirDY(d)};
+                    if (!grid_.inBounds(n.x, n.y) || grid_.at(n) != T_CARROT ||
+                        carrotBlock_[n.index()] != -1)
+                        continue;
+                    carrotBlock_[n.index()] = blocks;
+                    stack.push_back(n);
+                }
+            }
+            if (cells.size() < 2) carrotBlock_[c.index()] = -1;   // a lone carrot
+            else ++blocks;
+        }
+}
+
+bool Game::blockDone(int block) const {
+    for (int i = 0; i < Grid::kCells; ++i)
+        if (carrotBlock_[i] == block && grid_.cells[i] == T_CARROT) return false;
+    return true;
 }
 
 void Game::setReference(const std::vector<Dir>& moves) {
@@ -155,22 +194,25 @@ void Game::hideHint() {
     hintShown_ = false;
     hintRequested_ = false;
     hintPath_.clear();
+    pendingBlock_ = -1;
 }
 
 // `rejoinOnly`: Bobby stepped off a shown path. He is led back to the
 // remembered route at no cost; the solver runs only when that route is broken
 // (e.g. he stood on a spike the route still needs).
-// `tookCarrot`: that step took a carrot ahead of the route, so the route is
-// rebuilt not to come back to the carrots already taken.
-void Game::answerHint(bool rejoinOnly, bool tookCarrot) {
+// `tookCarrot`: carrots were taken ahead of the route (`block`, or the one
+// Bobby stands on if -1), so the route is rebuilt not to come back to the
+// carrots already taken.
+void Game::answerHint(bool rejoinOnly, bool tookCarrot, int block) {
     hintRequested_ = false;
+    if (!rejoinOnly) pendingBlock_ = -1;
     const Coord pos = player_.cell();
 
     hint::Options options;
     options.useSolver = !rejoinOnly;
     const auto started = std::chrono::steady_clock::now();
     hint::Result result;
-    if (tookCarrot) result = routeAroundCarrots(pos);
+    if (tookCarrot) result = routeAroundCarrots(pos, block);
     if (result.verdict != hint::Verdict::Winnable)
         result = hint::compute(grid_, pos, reference_, options);
     if (rejoinOnly && result.verdict == hint::Verdict::Unknown) {
@@ -211,11 +253,32 @@ void Game::answerHint(bool rejoinOnly, bool tookCarrot) {
 
 // Keeps the shown hint in step with Bobby: a step along the path shortens it,
 // a step off it leads him back to the remembered route.
+//
+// A carrot taken off the path rebuilds the route around the taken carrots. In
+// a block of carrots that waits until the block is collected or Bobby leaves
+// it, so the route does not jump on every carrot; until then only the cheap
+// way back to the route runs.
 void Game::followHint() {
     if (!hintShown_ || player_.isMoving()) return;
     const Coord pos = player_.cell();
     if (pos == hintCell_) return;
-    if (!hintPath_.empty() && hintPath_.front() == pos) {
+    const bool offPath = hintPath_.empty() || !(hintPath_.front() == pos);
+    const int block = carrotBlock_[pos.index()];
+    int around = pendingBlock_;
+    bool rebuild = pendingBlock_ >= 0 && (block != pendingBlock_ || blockDone(pendingBlock_));
+    if (offPath && (lastEvents_ & ev::Carrot)) {
+        around = block;
+        rebuild = block < 0 || blockDone(block);
+        if (!rebuild) pendingBlock_ = block;
+    }
+    if (rebuild) {
+        pendingBlock_ = -1;
+        if (hint_.verdict == hint::Verdict::Winnable) {
+            answerHint(true, true, around);
+            return;
+        }
+    }
+    if (!offPath) {
         hintPath_.erase(hintPath_.begin());
         if (!hint_.moves.empty()) hint_.moves.erase(hint_.moves.begin());
         hintCell_ = pos;
@@ -226,19 +289,23 @@ void Game::followHint() {
         hintPath_.clear();
         return;
     }
-    answerHint(true, (lastEvents_ & ev::Carrot) != 0);
+    answerHint(true);
 }
 
 // A route that never comes back to a taken carrot: around all of them if it
-// can, else around the one Bobby stands on. Taken carrots become walls, and
-// Bobby's own cell a spike, so he may leave it but not return. Any route found
-// there is also legal on the real grid. Same small budget as a re-route, so
-// a step never stalls.
-hint::Result Game::routeAroundCarrots(Coord pos) const {
+// can, else around those of `block` (or just the one Bobby stands on, if -1).
+// Taken carrots become walls, and Bobby's own cell, if one, a spike, so he may
+// leave it but not return. Any route found there is also legal on the real
+// grid. Same small budget as a re-route, so a step never stalls.
+hint::Result Game::routeAroundCarrots(Coord pos, int block) const {
     Grid all = grid_, last = grid_;
-    for (auto& t : all.cells)
-        if (t == T_CARROT_TAKEN) t = T_DEFAULT_GRASS;
-    all.at(pos) = last.at(pos) = T_CRACKED;
+    for (int i = 0; i < Grid::kCells; ++i) {
+        if (grid_.cells[i] != T_CARROT_TAKEN) continue;
+        all.cells[i] = T_DEFAULT_GRASS;
+        if (i == pos.index() || (block >= 0 && carrotBlock_[i] == block))
+            last.cells[i] = T_DEFAULT_GRASS;
+    }
+    if (grid_.at(pos) == T_CARROT_TAKEN) all.at(pos) = last.at(pos) = T_CRACKED;
     hint::Options options;
     options.conflictBudget = kRerouteConflicts;
     for (const Grid* g : {&all, &last}) {
