@@ -9,13 +9,14 @@
 
 namespace bc::gfx {
 
-// Two presentations of the same board: the whole 16x16 island at once, which
-// suits a desktop window, and the original handset viewport that scrolls
-// behind Bobby.
+// Two presentations of the same board: the whole island at once, which suits
+// a desktop window, and the original handset viewport that scrolls behind
+// Bobby. The full view is as big as the board, in pixels: a 32x32 board is
+// 1024 x 1024 logical pixels, which SDL scales into the window.
 enum class ViewMode { FullMap, Handheld };
 
-constexpr int kFullW     = Grid::W * kTileSize;   // 512
-constexpr int kFullH     = Grid::H * kTileSize;   // 512
+constexpr int kFullW     = Grid::kClassic * kTileSize;   // 512, a classic board
+constexpr int kFullH     = Grid::kClassic * kTileSize;   // 512
 constexpr int kViewCells = 10;
 constexpr int kViewRows  = 12;
 constexpr int kHandheldW = kViewCells * kTileSize;  // 320
@@ -29,8 +30,14 @@ public:
     ViewMode viewMode() const { return view_; }
     void toggleViewMode() { view_ = view_ == ViewMode::FullMap ? ViewMode::Handheld : ViewMode::FullMap; }
 
-    int logicalWidth() const  { return view_ == ViewMode::FullMap ? kFullW : kHandheldW; }
-    int logicalHeight() const { return view_ == ViewMode::FullMap ? kFullH : kHandheldH; }
+    // Size of the board in cells: the level's while one is shown, the classic
+    // 16x16 on the other screens. The app sets it and then redoes the layout.
+    void setBoard(int w, int h) { boardW_ = w; boardH_ = h; }
+    int boardW() const { return boardW_; }
+    int boardH() const { return boardH_; }
+
+    int logicalWidth() const  { return view_ == ViewMode::FullMap ? boardW_ * kTileSize : kHandheldW; }
+    int logicalHeight() const { return view_ == ViewMode::FullMap ? boardH_ * kTileSize : kHandheldH; }
 
     void clear();
     void present();
@@ -61,6 +68,8 @@ private:
     SDL_Renderer* r_ = nullptr;
     TextureCache tex_;
     ViewMode view_ = ViewMode::FullMap;
+    int boardW_ = Grid::kClassic;
+    int boardH_ = Grid::kClassic;
     int camX_ = 0;
     int camY_ = 0;
 };

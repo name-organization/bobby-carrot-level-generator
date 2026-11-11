@@ -66,7 +66,9 @@ void settle(Game& g) {
 std::uint64_t hashState(const Game& g) {
     std::uint64_t h = 1469598103934665603ull;
     auto mix = [&h](std::uint8_t b) { h ^= b; h *= 1099511628211ull; };
-    for (std::uint8_t c : g.grid().cells) mix(c);
+    const Grid& grid = g.grid();  // the level only: the storage around it is hedge
+    for (int y = 0; y < grid.h; ++y)
+        for (int x = 0; x < grid.w; ++x) mix(grid.at(x, y));
     mix(static_cast<std::uint8_t>(g.player().cell().x));
     mix(static_cast<std::uint8_t>(g.player().cell().y));
     mix(static_cast<std::uint8_t>(g.progress().inv.gray));
@@ -85,7 +87,7 @@ bool isPickup(std::uint8_t t) { return t == T_CARROT || t == T_GRASS; }
 bool everythingStillReachable(const Game& g) {
     const Grid& grid = g.grid();
     std::array<bool, Grid::kCells> seen{};
-    std::array<int, Grid::kCells> stack{};
+    std::array<int, Grid::kCells> stack;
     int sp = 0;
 
     const int startIdx = g.player().cell().index();
@@ -98,21 +100,23 @@ bool everythingStillReachable(const Game& g) {
 
     while (sp > 0) {
         const int cur = stack[--sp];
-        const int cx = cur % Grid::W, cy = cur / Grid::W;
+        const int cx = cur % Grid::kStride, cy = cur / Grid::kStride;
         const int nx[4] = {cx - 1, cx + 1, cx, cx};
         const int ny[4] = {cy, cy, cy - 1, cy + 1};
         for (int k = 0; k < 4; ++k) {
-            if (!Grid::inBounds(nx[k], ny[k])) continue;
-            const int ni = ny[k] * Grid::W + nx[k];
+            if (!grid.inBounds(nx[k], ny[k])) continue;
+            const int ni = ny[k] * Grid::kStride + nx[k];
             if (seen[ni] || !passable(grid.cells[ni])) continue;
             seen[ni] = true;
             stack[sp++] = ni;
         }
     }
 
-    for (int i = 0; i < Grid::kCells; ++i) {
-        const std::uint8_t t = grid.cells[i];
-        if ((isPickup(t) || t == T_EXIT) && !seen[i]) return false;
+    for (int y = 0; y < grid.h; ++y) {
+        for (int x = 0; x < grid.w; ++x) {
+            const std::uint8_t t = grid.at(x, y);
+            if ((isPickup(t) || t == T_EXIT) && !seen[Coord{x, y}.index()]) return false;
+        }
     }
     return true;
 }
@@ -120,11 +124,12 @@ bool everythingStillReachable(const Game& g) {
 int nearestPickupDistance(const Game& g, Coord from) {
     int best = 1000;
     const Grid& grid = g.grid();
-    for (int i = 0; i < Grid::kCells; ++i) {
-        const std::uint8_t t = grid.cells[i];
-        if (!isPickup(t) && !(t == T_EXIT && g.remaining() == 0)) continue;
-        const int d = std::abs(i % Grid::W - from.x) + std::abs(i / Grid::W - from.y);
-        best = std::min(best, d);
+    for (int y = 0; y < grid.h; ++y) {
+        for (int x = 0; x < grid.w; ++x) {
+            const std::uint8_t t = grid.at(x, y);
+            if (!isPickup(t) && !(t == T_EXIT && g.remaining() == 0)) continue;
+            best = std::min(best, std::abs(x - from.x) + std::abs(y - from.y));
+        }
     }
     return best;
 }

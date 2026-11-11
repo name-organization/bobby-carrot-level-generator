@@ -1,9 +1,12 @@
 #include "game.hpp"
+#include "canvas.hpp"
 #include "generator.hpp"
+#include "roomgen.hpp"
 
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
+#include <random>
 
 namespace bc {
 
@@ -22,26 +25,69 @@ bool Game::load(Mode mode, int index) {
     level_ = next;
     mode_  = mode;
     index_ = index;
+    rememberSeed(0, 0, 0);
     levelReference_.clear();
     restart();
     return true;
 }
 
-bool Game::loadProcedural(unsigned int seed) {
-    Level next = LevelGenerator::generateRandom(seed);
-    level_ = next;
-    mode_ = Mode::Normal;
-    index_ = -1; // Обозначает пользовательский/процедурный уровень
-    levelReference_.clear();
-    restart();
+const wfc::Model* Game::wfcModel() {
+    if (!wfcLearned_) {
+        wfcLearned_ = true;
+        std::vector<Canvas> samples;
+        for (int i = 0; i < Level::levelCount(Mode::Normal); ++i) {
+            Level original;
+            if (original.loadFromFile(Level::pathFor(Mode::Normal, i, root_)))
+                samples.push_back(Canvas::fromLevel(original));
+        }
+        wfcModel_ = wfc::learn(samples);
+        std::printf("[gen] WFC: %zu patterns from %zu levels\n", wfcModel_.patterns.size(),
+                    samples.size());
+    }
+    return wfcModel_.empty() ? nullptr : &wfcModel_;
+}
+
+bool Game::loadProcedural(unsigned int seed, int width, int height) {
+    // 0 stands for "random", so a drawn 0 is drawn again
+    std::random_device device;
+    while (seed == 0) seed = device();
+    roomgen::Params params = roomgen::Params::forSize(width, height);
+    params.model = wfcModel();
+    const auto started = std::chrono::steady_clock::now();
+    const roomgen::Result gen = roomgen::generate(params, seed);
+    const double ms = std::chrono::duration<double, std::milli>(
+                          std::chrono::steady_clock::now() - started).count();
+    Level next;
+    if (!gen.canvas.toLevel(next, "generated " + std::to_string(seed))) {
+        // the room generator gave nothing playable: fall back to the old one
+        std::fprintf(stderr, "[gen] seed %u: room generator failed, using the random walk\n", seed);
+        loadLevel(LevelGenerator::generateRandom(seed));
+        rememberSeed(seed, width, height);
+        return true;
+    }
+    std::printf("[gen] seed %u, %dx%d: %zu rooms (%d by WFC), %s walls, %s after %d attempt(s), "
+                "%zu moves, %.1f ms\n",
+                seed, width, height, gen.rooms.size(), gen.wfcRooms, roomgen::wallsName(gen.walls),
+                gen.verified ? "verified" : "NOT verified", gen.attempts, gen.solution.size(), ms);
+    loadLevel(next, gen.solution);
+    rememberSeed(seed, width, height);
     return true;
 }
 
-bool Game::loadLevel(Level level) {
-    level_ = std::move(level);
+void Game::rememberSeed(unsigned int seed, int width, int height) {
+    seed_ = seed;
+    genWidth_ = width;
+    genHeight_ = height;
+}
+
+bool Game::loadLevel(const Level& level, const std::vector<Dir>& reference) {
+    level_ = level;
     mode_ = Mode::Normal;
-    index_ = -1;
-    levelReference_.clear();
+    index_ = -1;  // not one of the shipped levels
+    rememberSeed(0, 0, 0);  // loadProcedural() sets it after this
+    // a reference left over from the previous level must not reach this one
+    levelReference_ = reference.empty() ? std::vector<Coord>{}
+                                        : hint::cellsAlong(level_.start, reference);
     restart();
     return true;
 }
@@ -120,11 +166,23 @@ void Game::answerHint(bool rejoinOnly, bool tookCarrot) {
     hintRequested_ = false;
     const Coord pos = player_.cell();
 
+    hint::Options options;
+    options.useSolver = !rejoinOnly;
     const auto started = std::chrono::steady_clock::now();
     hint::Result result;
     if (tookCarrot) result = routeAroundCarrots(pos);
     if (result.verdict != hint::Verdict::Winnable)
-        result = hint::compute(grid_, pos, reference_);
+        result = hint::compute(grid_, pos, reference_, options);
+    if (rejoinOnly && result.verdict == hint::Verdict::Unknown) {
+        // The remembered route is broken -- typically Bobby stepped on a spike
+        // the route still needed, or the way back to it crosses one. Ask the
+        // solver now instead of hiding the hint: it finds a new route or says
+        // the level is lost (the board turns red). The budget is kept small so
+        // that a step never stalls; past it the hint hides as before.
+        hint::Options reroute;
+        reroute.conflictBudget = kRerouteConflicts;
+        result = hint::compute(grid_, pos, reference_, reroute);
+    }
     const double ms = std::chrono::duration<double, std::milli>(
                           std::chrono::steady_clock::now() - started).count();
 
@@ -133,7 +191,7 @@ void Game::answerHint(bool rejoinOnly, bool tookCarrot) {
                 result.moves.size(), ms);
 
     if (rejoinOnly && result.verdict == hint::Verdict::Unknown) {
-        // the solver ran out of budget: hide the hint until H is pressed
+        // not even the solver could tell in time: hide the hint until H is pressed
         hintShown_ = false;
         hintPath_.clear();
         return;
@@ -174,14 +232,17 @@ void Game::followHint() {
 // A route that never comes back to a taken carrot: around all of them if it
 // can, else around the one Bobby stands on. Taken carrots become walls, and
 // Bobby's own cell a spike, so he may leave it but not return. Any route found
-// there is also legal on the real grid.
+// there is also legal on the real grid. Same small budget as a re-route, so
+// a step never stalls.
 hint::Result Game::routeAroundCarrots(Coord pos) const {
     Grid all = grid_, last = grid_;
     for (auto& t : all.cells)
         if (t == T_CARROT_TAKEN) t = T_DEFAULT_GRASS;
     all.at(pos) = last.at(pos) = T_CRACKED;
+    hint::Options options;
+    options.conflictBudget = kRerouteConflicts;
     for (const Grid* g : {&all, &last}) {
-        const hint::Result r = hint::compute(*g, pos, {});
+        const hint::Result r = hint::compute(*g, pos, {}, options);
         if (r.verdict == hint::Verdict::Winnable) return r;
     }
     return {};

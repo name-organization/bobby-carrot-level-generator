@@ -7,6 +7,7 @@
 #include "level.hpp"
 #include "player.hpp"
 #include "rules.hpp"
+#include "wfc.hpp"
 
 namespace bc {
 
@@ -17,8 +18,15 @@ public:
     explicit Game(std::string assetRoot = "assets/v1") : root_(std::move(assetRoot)) {}
 
     bool load(Mode mode, int index);
-    bool loadProcedural(unsigned int seed = 0);
-    bool loadLevel(Level level);
+    // A new room-based level (roomgen.hpp) of the given size, up to
+    // Grid::kMaxW x Grid::kMaxH; seed 0 picks a random one. The same seed and
+    // size always give the same level, which is how levels are shared.
+    bool loadProcedural(unsigned int seed = 0, int width = Grid::kClassic,
+                        int height = Grid::kClassic);
+    // Plays a level that is not one of the shipped files: a generated or an
+    // imported one. `reference` is a winning solution as moves from the start,
+    // if known. Always succeeds.
+    bool loadLevel(const Level& level, const std::vector<Dir>& reference = {});
     void restart();
 
     // Queue input for the next tick. `held` is a continuously pressed
@@ -35,6 +43,12 @@ public:
     const Level& level() const      { return level_; }
     Mode mode() const               { return mode_; }
     int levelIndex() const          { return index_; }
+    // Seed and requested size of the generated level being played; seed 0
+    // when the level was not generated. The size is the one asked for, which
+    // the level itself can differ from when the generator fell back.
+    unsigned int seed() const       { return seed_; }
+    int generatedWidth() const      { return genWidth_; }
+    int generatedHeight() const     { return genHeight_; }
     const Progress& progress() const{ return progress_; }
 
     // True once every carrot (or every patch of grass) has been taken, which
@@ -71,27 +85,41 @@ public:
 
     // The last answer, or nullptr if there is none for the current position.
     // Moving along the suggested path shortens it. Moving off it re-routes
-    // back to the remembered path, or asks the solver if that route is
-    // broken; if the solver gives up, the hint disappears until the next
-    // requestHint(). A carrot taken off the path rebuilds the route so it does
-    // not come back to taken carrots where it can avoid them.
+    // back to the remembered path without the solver; if that route is
+    // broken (a spike it needed has fired, say), the solver is asked with a
+    // small budget, and only if that runs out does the hint disappear until
+    // the next requestHint(). A carrot taken off the path rebuilds the route
+    // so it does not come back to taken carrots where it can avoid them.
     // Its `moves` always start at Bobby's current cell, in step with hintPath().
     const hint::Result* hint() const { return hintShown_ ? &hint_ : nullptr; }
     // Cells still ahead on the suggested path, the next one first.
     const std::vector<Coord>& hintPath() const { return hintPath_; }
 
 private:
+    // SAT conflicts the solver may spend re-routing after a step off the hint
+    // path, against 400000 for a hint asked with H.
+    static constexpr long long kRerouteConflicts = 50000;
+
+    void rememberSeed(unsigned int seed, int width, int height);
     void answerHint(bool rejoinOnly, bool tookCarrot = false);
     hint::Result routeAroundCarrots(Coord pos) const;
     void followHint();
+    // Learned from the original carrot levels on first use; nullptr if they
+    // cannot be read, and the generator then uses its fixed patterns.
+    const wfc::Model* wfcModel();
 
     std::string root_;
+    wfc::Model wfcModel_;
+    bool wfcLearned_ = false;
     Level level_;
     Grid grid_;
     Player player_;
     Progress progress_;
     Mode mode_ = Mode::Normal;
     int index_ = 0;
+    unsigned int seed_ = 0;
+    int genWidth_ = 0;
+    int genHeight_ = 0;
     int elapsedTicks_ = 0;
     int moveCount_ = 0;
     unsigned lastEvents_ = ev::None;

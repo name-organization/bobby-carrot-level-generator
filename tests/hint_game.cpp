@@ -93,9 +93,10 @@ int main(int argc, char** argv) {
         check(h && h->stage == hint::Stage::Reference,
               name + ": hint after restart uses the reference");
 
-        // step off the path at every point of it: the hint must re-route on its
-        // own (no new request), via the solver if the remembered route is broken
-        int rerouted = 0, hidden = 0, broken = 0;
+        // step off the path at every point of it: the hint must re-route on
+        // its own (no new request) -- back to the route when it survives, by
+        // the solver when it does not -- or say the level is lost
+        int rerouted = 0, hidden = 0, broken = 0, lost = 0;
         for (std::size_t k = 0; k < plan.size(); ++k) {
             g.restart();
             settle(g);
@@ -115,8 +116,9 @@ int main(int argc, char** argv) {
             if (!moved || g.levelComplete() || g.playerDead()) continue;
             const hint::Result* shown = g.hint();
             if (!shown) { ++hidden; continue; }
-            if (shown->verdict == hint::Verdict::DeadEnd) { ++rerouted; continue; }
-            if (shown->verdict != hint::Verdict::Winnable) {
+            if (shown->verdict == hint::Verdict::DeadEnd) { ++lost; continue; }
+            if ((shown->stage != hint::Stage::Reference && shown->stage != hint::Stage::Solver) ||
+                shown->verdict != hint::Verdict::Winnable) {
                 ++broken;
                 std::printf("  step %zu: unexpected %s/%s\n", k, hint::stageName(shown->stage),
                             hint::verdictName(shown->verdict));
@@ -135,8 +137,47 @@ int main(int argc, char** argv) {
             }
         }
         check(broken == 0, name + ": off-path steps re-routed " + std::to_string(rerouted) +
-                               ", hidden " + std::to_string(hidden) + ", wrong " +
-                               std::to_string(broken));
+                               ", lost " + std::to_string(lost) + ", hidden " +
+                               std::to_string(hidden) + ", wrong " + std::to_string(broken));
+
+        // stepping off the path onto a spike used to hide the hint whenever
+        // the remembered route needed that spike later; now the hint stays,
+        // with a new route or with the dead end
+        int spikeSteps = 0, spikeHidden = 0, spikeWrong = 0;
+        for (std::size_t k = 0; k < plan.size(); ++k) {
+            for (Dir d : {Dir::Up, Dir::Down, Dir::Left, Dir::Right}) {
+                g.restart();
+                settle(g);
+                askHint(g);
+                for (std::size_t i = 0; i < k; ++i) move(g, plan[i]);
+                if (g.levelComplete() || g.playerDead() || !g.hint() || g.hintPath().empty())
+                    continue;
+                const Coord at = g.player().cell();
+                const Coord to{at.x + dirDX(d), at.y + dirDY(d)};
+                if (to == g.hintPath().front() || !g.grid().inBounds(to.x, to.y) ||
+                    g.grid().at(to) != T_CRACKED)
+                    continue;
+                move(g, d);
+                if (!(g.player().cell() == to)) continue;
+                ++spikeSteps;
+                const hint::Result* shown = g.hint();
+                if (!shown) { ++spikeHidden; continue; }
+                if (shown->verdict == hint::Verdict::DeadEnd) {
+                    // must really be lost: the full solver agrees
+                    if (hint::compute(g.grid(), to, {}).verdict != hint::Verdict::DeadEnd)
+                        ++spikeWrong;
+                    continue;
+                }
+                const std::vector<Dir> rest = shown->moves;
+                for (Dir r : rest) move(g, r);
+                for (int i = 0; i < 200 && !g.levelComplete(); ++i) g.update();
+                if (!g.levelComplete()) ++spikeWrong;
+            }
+        }
+        check(spikeHidden == 0 && spikeWrong == 0,
+              name + ": " + std::to_string(spikeSteps) + " steps onto a spike off the path keep " +
+                  "the hint (hidden " + std::to_string(spikeHidden) + ", wrong " +
+                  std::to_string(spikeWrong) + ")");
     }
 
     // level 3: up the spike column, left, up, right twice -- carrots get
@@ -194,7 +235,7 @@ int main(int argc, char** argv) {
             const Coord before = g.player().cell();
             for (Dir d : {Dir::Up, Dir::Down, Dir::Left, Dir::Right}) {
                 const Coord to{before.x + dirDX(d), before.y + dirDY(d)};
-                if (!Grid::inBounds(to.x, to.y) || to == g.hintPath().front() ||
+                if (!g.grid().inBounds(to.x, to.y) || to == g.hintPath().front() ||
                     g.grid().at(to) != T_CARROT)
                     continue;
                 move(g, d);
@@ -218,6 +259,28 @@ int main(int argc, char** argv) {
     check(aroundOk > 0 && aroundBad == 0,
           "generated: carrots taken off the path are not walked over again (ok " +
               std::to_string(aroundOk) + ", wrong " + std::to_string(aroundBad) + ")");
+
+    // bigger generated maps: the hint at the start leads to the exit
+    for (int size : {24, 32}) {
+        int followed = 0, tried = 0;
+        for (unsigned seed = 1; seed <= 4; ++seed) {
+            ++tried;
+            g.loadProcedural(seed, size, size);
+            settle(g);
+            const hint::Result* first = askHint(g);
+            if (!first || first->verdict != hint::Verdict::Winnable ||
+                g.grid().w != size || g.grid().h != size)
+                continue;
+            const std::vector<Dir> plan = first->moves;
+            for (std::size_t i = 0; i < plan.size() && !g.levelComplete(); ++i) move(g, plan[i]);
+            for (int i = 0; i < 200 && !g.levelComplete(); ++i) g.update();
+            followed += g.levelComplete();
+        }
+        check(followed == tried, std::to_string(size) + "x" + std::to_string(size) +
+                                     ": followed the hint to the exit on " +
+                                     std::to_string(followed) + " of " + std::to_string(tried) +
+                                     " generated levels");
+    }
 
     // levels with conveyors and other extras are not covered
     g.load(Mode::Normal, 7);
