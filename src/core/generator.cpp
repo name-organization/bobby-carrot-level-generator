@@ -19,8 +19,8 @@ Level LevelGenerator::generateRandom(unsigned int seed, int pathLength) {
         lv.grid.cells.fill(T_DEFAULT_GRASS); 
 
         // 1. Случайная стартовая позиция с отступом от границ
-        std::uniform_int_distribution<int> distCoordX(1, Grid::W - 2);
-        std::uniform_int_distribution<int> distCoordY(1, Grid::H - 2);
+        std::uniform_int_distribution<int> distCoordX(1, Grid::kClassic - 2);
+        std::uniform_int_distribution<int> distCoordY(1, Grid::kClassic - 2);
 
         Coord start{distCoordX(rng), distCoordY(rng)};
         lv.start = start;
@@ -49,7 +49,7 @@ Level LevelGenerator::generateRandom(unsigned int seed, int pathLength) {
             Coord next{current.x + dx[d], current.y + dy[d]};
 
             int safety = 0;
-            while ((next.x < 1 || next.x >= Grid::W - 1 || next.y < 1 || next.y >= Grid::H - 1) && safety < 4) {
+            while ((next.x < 1 || next.x >= Grid::kClassic - 1 || next.y < 1 || next.y >= Grid::kClassic - 1) && safety < 4) {
                 d = distDir(rng);
                 next.x = current.x + dx[d];
                 next.y = current.y + dy[d];
@@ -101,8 +101,8 @@ Level LevelGenerator::generateRandom(unsigned int seed, int pathLength) {
             int n_count = 0;
             for (int i = 0; i < 4; ++i) {
                 Coord n{c.x + dx[i], c.y + dy[i]};
-                if (n.x >= 1 && n.x < Grid::W - 1 && 
-                    n.y >= 1 && n.y < Grid::H - 1 && 
+                if (n.x >= 1 && n.x < Grid::kClassic - 1 && 
+                    n.y >= 1 && n.y < Grid::kClassic - 1 && 
                     visitCounts[n.index()] > 0) {
                     n_count++;
                 }
@@ -133,8 +133,8 @@ Level LevelGenerator::generateRandom(unsigned int seed, int pathLength) {
         lv.grid.at(forcedSpike) = T_CRACKED;
 
         // 4. Заполнение внутреннего пространства и расстановка шипов (сохранена ваша проверка соседей)
-        for (int y = 0; y < Grid::H; ++y) {
-            for (int x = 0; x < Grid::W; ++x) {
+        for (int y = 0; y < Grid::kClassic; ++y) {
+            for (int x = 0; x < Grid::kClassic; ++x) {
                 Coord c{x, y};
                 int visits = visitCounts[c.index()];
 
@@ -163,8 +163,8 @@ Level LevelGenerator::generateRandom(unsigned int seed, int pathLength) {
         }
 
         // 4. Шаг Б (Автотайлинг заборов): Проходим по всем заборам и настраиваем их стыковку по соседям
-        for (int y = 0; y < Grid::H; ++y) {
-            for (int x = 0; x < Grid::W; ++x) {
+        for (int y = 0; y < Grid::kClassic; ++y) {
+            for (int x = 0; x < Grid::kClassic; ++x) {
                 Coord c{x, y};
                 std::uint8_t tile = lv.grid.at(c);
                 
@@ -175,7 +175,7 @@ Level LevelGenerator::generateRandom(unsigned int seed, int pathLength) {
 
                 // Функция для проверки, является ли клетка частью забора
                 auto isFence = [&](int nx, int ny) {
-                    if (nx < 0 || nx >= Grid::W || ny < 0 || ny >= Grid::H) return false;
+                    if (nx < 0 || nx >= Grid::kClassic || ny < 0 || ny >= Grid::kClassic) return false;
                     std::uint8_t neighborTile = lv.grid.at(nx, ny);
                     return neighborTile < T_FIRST_WALKABLE && 
                            neighborTile != T_DEFAULT_GRASS && 

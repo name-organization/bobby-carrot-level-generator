@@ -154,7 +154,7 @@ int main(int argc, char** argv) {
                     continue;
                 const Coord at = g.player().cell();
                 const Coord to{at.x + dirDX(d), at.y + dirDY(d)};
-                if (to == g.hintPath().front() || !Grid::inBounds(to.x, to.y) ||
+                if (to == g.hintPath().front() || !g.grid().inBounds(to.x, to.y) ||
                     g.grid().at(to) != T_CRACKED)
                     continue;
                 move(g, d);
@@ -216,6 +216,28 @@ int main(int argc, char** argv) {
     g.toggleHint();
     g.update();
     check(g.hint() != nullptr, "toggle: hide and show within one tick still answers");
+
+    // bigger generated maps: the hint at the start leads to the exit
+    for (int size : {24, 32}) {
+        int followed = 0, tried = 0;
+        for (unsigned seed = 1; seed <= 4; ++seed) {
+            ++tried;
+            g.loadProcedural(seed, size, size);
+            settle(g);
+            const hint::Result* first = askHint(g);
+            if (!first || first->verdict != hint::Verdict::Winnable ||
+                g.grid().w != size || g.grid().h != size)
+                continue;
+            const std::vector<Dir> plan = first->moves;
+            for (std::size_t i = 0; i < plan.size() && !g.levelComplete(); ++i) move(g, plan[i]);
+            for (int i = 0; i < 200 && !g.levelComplete(); ++i) g.update();
+            followed += g.levelComplete();
+        }
+        check(followed == tried, std::to_string(size) + "x" + std::to_string(size) +
+                                     ": followed the hint to the exit on " +
+                                     std::to_string(followed) + " of " + std::to_string(tried) +
+                                     " generated levels");
+    }
 
     // levels with conveyors and other extras are not covered
     g.load(Mode::Normal, 7);
