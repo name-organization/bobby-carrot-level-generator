@@ -16,10 +16,14 @@ constexpr int dirDY(Dir d) {
 constexpr bool isHorizontal(Dir d) { return d == Dir::Left || d == Dir::Right; }
 constexpr bool isVertical(Dir d)   { return d == Dir::Up   || d == Dir::Down;  }
 
+// Cells per stored row of a Grid: the widest map the engine plays. A level
+// narrower than that uses the left part of each row.
+constexpr int kGridStride = 32;
+
 struct Coord {
     int x = 0;
     int y = 0;
-    constexpr int index() const { return y * 16 + x; }
+    constexpr int index() const { return y * kGridStride + x; }
     friend constexpr bool operator==(Coord a, Coord b) {
         return a.x == b.x && a.y == b.y;
     }

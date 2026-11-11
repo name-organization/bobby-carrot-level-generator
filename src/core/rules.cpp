@@ -3,7 +3,7 @@
 namespace bc::rules {
 
 bool canStep(const Grid& g, Coord from, Coord to, Dir d, const Inventory& inv) {
-    if (!Grid::inBounds(to.x, to.y)) return false;
+    if (!g.inBounds(to.x, to.y)) return false;
 
     const std::uint8_t nw = g.at(to);
     const std::uint8_t od = g.at(from);

@@ -46,9 +46,9 @@ const wfc::Model* Game::wfcModel() {
     return wfcModel_.empty() ? nullptr : &wfcModel_;
 }
 
-bool Game::loadProcedural(unsigned int seed) {
+bool Game::loadProcedural(unsigned int seed, int width, int height) {
     if (seed == 0) seed = std::random_device{}();
-    roomgen::Params params;
+    roomgen::Params params = roomgen::Params::forSize(width, height);
     params.model = wfcModel();
     const auto started = std::chrono::steady_clock::now();
     const roomgen::Result gen = roomgen::generate(params, seed);
@@ -61,9 +61,9 @@ bool Game::loadProcedural(unsigned int seed) {
         loadLevel(LevelGenerator::generateRandom(seed));
         return true;
     }
-    std::printf("[gen] seed %u: %zu rooms (%d by WFC), %s walls, %s after %d attempt(s), "
+    std::printf("[gen] seed %u, %dx%d: %zu rooms (%d by WFC), %s walls, %s after %d attempt(s), "
                 "%zu moves, %.1f ms\n",
-                seed, gen.rooms.size(), gen.wfcRooms, roomgen::wallsName(gen.walls),
+                seed, width, height, gen.rooms.size(), gen.wfcRooms, roomgen::wallsName(gen.walls),
                 gen.verified ? "verified" : "NOT verified", gen.attempts, gen.solution.size(), ms);
     loadLevel(next, gen.solution);
     return true;
