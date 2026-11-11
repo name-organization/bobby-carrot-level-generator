@@ -100,8 +100,14 @@ int screenshot(const std::string& assetRoot, bc::Mode mode, int level, int warmu
 #ifdef __EMSCRIPTEN__
 // Called from web/shell.html as Module._bc_generate_level(seed) etc.
 extern "C" {
-// seed 0 picks a random one
-EMSCRIPTEN_KEEPALIVE void bc_generate_level(unsigned int seed) { g_app.generateLevel(seed); }
+// The New level window's Generate: seed 0 picks a random one; size 16, 24 or
+// 32; difficulty 0 easy, 1 medium, 2 hard.
+EMSCRIPTEN_KEEPALIVE void bc_generate_level(unsigned int seed, int size, int difficulty) {
+    if (difficulty < 0 || difficulty > 2) difficulty = 1;
+    g_app.generateLevel(seed, size, static_cast<bc::Difficulty>(difficulty));
+}
+// The start page's "Generate level": opens the New level window.
+EMSCRIPTEN_KEEPALIVE void bc_ask_to_generate() { g_app.askToGenerate(); }
 EMSCRIPTEN_KEEPALIVE void bc_select_level()   { g_app.openLevelSelect(); }
 // key is an SDL keycode: the lower-case letter's code, or 27 for Escape.
 EMSCRIPTEN_KEEPALIVE void bc_press_key(int key) { g_app.pressKey(key); }
@@ -111,11 +117,6 @@ EMSCRIPTEN_KEEPALIVE void bc_set_audio(int music, int sound, int muted) {
 }
 // 1 while the Settings page is open
 EMSCRIPTEN_KEEPALIVE void bc_set_paused(int paused) { g_app.setPaused(paused != 0); }
-// The New level dialog: 0 easy, 1 medium, 2 hard
-EMSCRIPTEN_KEEPALIVE void bc_set_difficulty(int difficulty) {
-    if (difficulty >= 0 && difficulty <= 2)
-        g_app.setGeneratedDifficulty(static_cast<bc::Difficulty>(difficulty));
-}
 }
 #endif
 

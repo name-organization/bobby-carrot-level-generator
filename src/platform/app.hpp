@@ -40,19 +40,22 @@ public:
     // it has to go through the app rather than straight to the renderer.
     void setViewMode(gfx::ViewMode m);
 
-    // Actions behind the web page's buttons (and the G key). A generated
-    // level is generatedSize_ cells a side, which the B key changes, and of
-    // generatedDifficulty_, which the L key changes; seed 0 picks a random
-    // one. `rated` false: see startFromSeed().
+    // Actions behind the web page's buttons and the G key. A generated level
+    // is generatedSize_ cells a side and of generatedDifficulty_: those of the
+    // last generated level, or what the New level window last generated
+    // with. Seed 0 picks a random one. `rated` false: see startFromSeed().
     void generateLevel(unsigned int seed = 0, bool rated = true);
-    // The difficulty buttons of the web page's New level dialog: the
-    // difficulty of the next generated level, nothing generated yet.
-    void setGeneratedDifficulty(Difficulty d) { generatedDifficulty_ = d; }
-    // The G key and the "Generate level" button: the web page asks whether
-    // to take a random seed or a given one, then calls generateLevel().
-    // Without the page (native builds) it generates a random level at once.
+    // The New level window's Generate: a level of this size and difficulty,
+    // which the next ones (G, a finished level) keep. A size that is not one
+    // of isGeneratedSize() keeps the current one.
+    void generateLevel(unsigned int seed, int size, Difficulty difficulty);
+    // The "Generate level" button of the start page and the N key in a
+    // generated level: the web page opens the New level window (map size,
+    // difficulty, a random seed or a given one), which then calls
+    // generateLevel(). Without the page (native builds) it generates a random
+    // level at once.
     void askToGenerate();
-    // Sides a generated map can have: 16, 24 or 32 cells, as B cycles them.
+    // Sides a generated map can have: 16, 24 or 32 cells.
     static bool isGeneratedSize(int size);
     void openLevelSelect();
     void goToMainMenu();
@@ -91,6 +94,9 @@ private:
     void applyAudio();
     void reportAudio();
     void reportLevelUrl();
+    // A generated level is on screen (playing it or its "cleared" banner):
+    // where G and N do their generated-level things.
+    bool onGeneratedLevel() const;
 
     SDL_Window* window_ = nullptr;
     SDL_Renderer* renderer_ = nullptr;
@@ -117,9 +123,9 @@ private:
     int windowScale_ = 2;
     // Largest window side, in window pixels: the classic board at scale 2.
     static constexpr int kMaxWindowSide = 1024;
-    // Side of generated maps, in cells: B cycles 16, 24, 32.
+    // Side (16, 24, 32 cells) and difficulty of generated maps, chosen in the
+    // New level window or by a level link.
     int generatedSize_ = Grid::kClassic;
-    // Difficulty of generated maps: L cycles easy, medium, hard.
     Difficulty generatedDifficulty_ = Difficulty::Medium;
     bool running_ = true;
     bool paused_ = false;

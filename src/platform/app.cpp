@@ -169,6 +169,16 @@ void App::generateLevel(unsigned int seed, bool rated) {
     pendingTap_ = Dir::None;
 }
 
+void App::generateLevel(unsigned int seed, int size, Difficulty difficulty) {
+    if (isGeneratedSize(size)) generatedSize_ = size;
+    generatedDifficulty_ = difficulty;
+    generateLevel(seed);
+}
+
+bool App::onGeneratedLevel() const {
+    return (screen_ == Screen::Play || screen_ == Screen::Cleared) && game_.levelIndex() < 0;
+}
+
 void App::askToGenerate() {
 #ifdef __EMSCRIPTEN__
     const bool asked = EM_ASM_INT({
@@ -443,9 +453,14 @@ void App::onKey(SDL_Keycode key) {
 #endif
             break;
         case SDLK_n:
-            if (screen_ == Screen::Play &&
-                game_.levelIndex() + 1 < Level::levelCount(mode_))
+            // in a generated level: the New level window, to change the map
+            // size or the difficulty; in a shipped one: the next level
+            if (onGeneratedLevel()) {
+                askToGenerate();
+            } else if (screen_ == Screen::Play && game_.levelIndex() >= 0 &&
+                       game_.levelIndex() + 1 < Level::levelCount(mode_)) {
                 startLevel(mode_, game_.levelIndex() + 1);
+            }
             break;
         case SDLK_p:
             if (screen_ == Screen::Play && game_.levelIndex() > 0)
@@ -460,18 +475,10 @@ void App::onKey(SDL_Keycode key) {
             selected_ = 0;
             if (screen_ == Screen::Play) startLevel(mode_, 0);
             break;
-        case SDLK_g: askToGenerate(); break;
-        case SDLK_b:
-            // the size of generated maps: 16, 24, 32 cells a side, then back
-            generatedSize_ = generatedSize_ >= Grid::kMaxW ? Grid::kClassic : generatedSize_ + 8;
-            std::printf("[gen] map size %dx%d\n", generatedSize_, generatedSize_);
-            if (screen_ == Screen::Play && game_.levelIndex() < 0) generateLevel();
-            break;
-        case SDLK_l:
-            // the difficulty of generated maps: easy, medium, hard, then back
-            generatedDifficulty_ = difficulty::next(generatedDifficulty_);
-            std::printf("[gen] difficulty %s\n", difficulty::name(generatedDifficulty_));
-            if (screen_ == Screen::Play && game_.levelIndex() < 0) generateLevel();
+        case SDLK_g:
+            // in a generated level only: another one of the same size and
+            // difficulty, with a random seed
+            if (onGeneratedLevel()) generateLevel();
             break;
         case SDLK_q: goToMainMenu(); break;
         // export the generated level as a link: its seed, map size and difficulty

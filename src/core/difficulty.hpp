@@ -57,7 +57,6 @@ struct Rating {
 
 const char* name(Difficulty d);
 bool parse(std::string_view text, Difficulty& out);
-Difficulty next(Difficulty d);  // Easy -> Medium -> Hard -> Easy
 
 // The band a score falls into, and how far a score is from a band (0 inside).
 Difficulty band(int score);

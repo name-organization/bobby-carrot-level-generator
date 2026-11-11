@@ -15,8 +15,9 @@ Game available at [http://localhost:8080](http://localhost:8080)
 
 1. Open [http://localhost:8080](http://localhost:8080).
 2. Choose a level:
-  - **Generate level** makes a new level: pick the difficulty (**Easy**,
-    **Medium** or **Hard**, or <kbd>←</kbd> <kbd>→</kbd>), then **Random seed**,
+  - **Generate level** makes a new level: pick the map size (**16 × 16**,
+    **24 × 24** or **32 × 32**) and the difficulty (**Easy**, **Medium** or
+    **Hard**; <kbd>←</kbd> <kbd>→</kbd> change the row that is selected), then **Random seed**,
     or **Enter seed** and type one (1 … 4294967295) to get that seed's level, or
   - **Select level** opens the list: click a level number. Levels unlock one
     by one, and progress is saved in the browser.
@@ -48,9 +49,8 @@ listed under the game; each of them can also be clicked. All keys:
 | <kbd>Enter</kbd> | confirm, start the selected level |
 | <kbd>H</kbd> | show or hide the hint |
 | <kbd>R</kbd> | restart the level |
-| <kbd>G</kbd> | generate a new level: random seed or a given one |
-| <kbd>B</kbd> | size of generated maps: 16, 24 or 32 cells a side (generates one in a generated level) |
-| <kbd>L</kbd> | difficulty of generated maps: easy, medium or hard (generates one in a generated level) |
+| <kbd>G</kbd> | in a generated level: another one of the same map size and difficulty, with a random seed |
+| <kbd>N</kbd> | in a generated level: the New level window, to change the map size or the difficulty or to enter a seed (pauses the level); in a shipped level: the next one |
 | <kbd>T</kbd> | carrot / egg levels (not in a generated level) |
 | <kbd>E</kbd> | copy a link to the generated level (its seed, map size and difficulty) |
 | <kbd>Esc</kbd> | back: from a level to the level list, from the list to the main menu; closes Settings (back to the level) and New level |
@@ -122,8 +122,8 @@ starts the same level. `size` is 16, 24 or 32 and may be left out for 16.
 before difficulties and gives the level it always gave (the first medium level
 of the seed, not picked by its score). The native build prints
 `--seed=… --size=… --difficulty=…` instead and takes the same options on start.
-Levels made with <kbd>B</kbd> or <kbd>L</kbd> and the ones that follow a
-finished generated level get a random seed without asking.
+Levels made with <kbd>G</kbd> and the ones that follow a finished generated
+level keep the map size and difficulty and get a random seed without asking.
 
 ### Difficulty
 
@@ -146,7 +146,7 @@ the seed itself) and the first whose score lands in the difficulty's band is
 kept, or the closest of the three. The score is printed with the level in the
 browser console.
 
-<kbd>G</kbd> builds a level from rooms (`src/core/roomgen.{hpp,cpp}`, the
+The generator builds a level from rooms (`src/core/roomgen.{hpp,cpp}`, the
 Spelunky approach): the map is cut into a grid of room slots, a random path of
 rooms runs from the start to the exit, side rooms hang off it, and more doors
 between neighbouring rooms close cycles, so that most rooms open into two to
@@ -162,7 +162,7 @@ rooms it separates, and room by room (each with its walls) if that fails. The
 layout pins the doors, the cells they lead to, the start and the exit; a
 one-cell wall between two rooms may come out hedge or fence. A room WFC cannot
 fill (about 4%) gets fixed patterns (carrot fields, rows, pillars) instead. The
-model is learned from `assets/v1/level` on the first <kbd>G</kbd>.
+model is learned from `assets/v1/level` with the first generated level.
 
 Hedge and fence pieces are then picked from their neighbours by
 `src/core/autotile.{hpp,cpp}`, whose tables were read off the 50 original
@@ -176,7 +176,7 @@ seed and the time it took are printed to the browser console, and the seed gives
 the same level in the bench.
 
 The generator works on a `Canvas` of any size (`src/core/canvas.hpp`); up to
-32 × 32 it is verified and played. <kbd>B</kbd> picks 16, 24 or 32 cells a side;
+32 × 32 it is verified and played. The New level window picks 16, 24 or 32 cells a side;
 `roomgen::Params::forSize` sets the room size (4, 5, 6), the carrot weight and
 the spike target for each, with what they measured.
 

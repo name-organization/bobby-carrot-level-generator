@@ -56,15 +56,6 @@ bool parse(std::string_view text, Difficulty& out) {
     return false;
 }
 
-Difficulty next(Difficulty d) {
-    switch (d) {
-        case Difficulty::Easy: return Difficulty::Medium;
-        case Difficulty::Medium: return Difficulty::Hard;
-        case Difficulty::Hard: return Difficulty::Easy;
-    }
-    return Difficulty::Medium;
-}
-
 Difficulty band(int score) {
     if (score >= kHardFrom) return Difficulty::Hard;
     if (score >= kMediumFrom) return Difficulty::Medium;
