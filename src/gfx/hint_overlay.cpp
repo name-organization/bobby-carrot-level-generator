@@ -30,7 +30,7 @@ void drawHintOverlay(SDL_Renderer* r, const Game& game, int camX, int camY) {
 
     if (h->verdict == hint::Verdict::DeadEnd) {
         SDL_SetRenderDrawColor(r, 170, 20, 20, 110);
-        const SDL_Rect all{0, 0, Grid::W * kTileSize, Grid::H * kTileSize};
+        const SDL_Rect all{-camX, -camY, game.grid().w * kTileSize, game.grid().h * kTileSize};
         SDL_RenderFillRect(r, &all);
         return;
     }

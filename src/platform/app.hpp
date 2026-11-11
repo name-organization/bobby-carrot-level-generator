@@ -32,7 +32,8 @@ public:
     // it has to go through the app rather than straight to the renderer.
     void setViewMode(gfx::ViewMode m);
 
-    // Actions behind the web page's buttons (and the G key).
+    // Actions behind the web page's buttons (and the G key). A generated
+    // level is generatedSize_ cells a side, which the B key changes.
     void generateLevel();
     void openLevelSelect();
     void goToMainMenu();
@@ -58,6 +59,7 @@ private:
     void startLevel(Mode mode, int index);
     void advanceLevel();
     void applyLayout();
+    void syncBoard();
     void playEventSounds(unsigned events);
     void rememberProgress();
     void reportScreen();
@@ -78,6 +80,10 @@ private:
     int frameTick_ = 0;
     int clearedTimer_ = 0;
     int windowScale_ = 2;
+    // Largest window side, in window pixels: the classic board at scale 2.
+    static constexpr int kMaxWindowSide = 1024;
+    // Side of generated maps, in cells: B cycles 16, 24, 32.
+    int generatedSize_ = Grid::kClassic;
     bool running_ = true;
     bool headless_ = false;
     bool touchSeen_ = false;

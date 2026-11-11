@@ -117,6 +117,8 @@ else()
              COMMAND hint_game "${CMAKE_SOURCE_DIR}/assets/v1")
     add_test(NAME generated_levels_winnable
              COMMAND gen_bench --count 200 -q --assets "${CMAKE_SOURCE_DIR}/assets/v1")
+    add_test(NAME generated_big_levels_winnable
+             COMMAND gen_bench --count 50 -q --size 32x32 --assets "${CMAKE_SOURCE_DIR}/assets/v1")
 endif()
 
 target_compile_options(bobby PRIVATE -Wall -Wextra -Wno-unused-parameter)

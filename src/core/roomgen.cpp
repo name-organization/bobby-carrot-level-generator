@@ -602,7 +602,8 @@ bool build(const Params& p, Walls walls, Rng& rng, Result& out) {
     if (useWfc) {
         const std::array<int, wfc::kSymbols> percent{p.wfcHedgePercent, 100, 100,
                                                      p.wfcCarrotPercent, p.wfcSpikePercent};
-        fillWithWfc(*p.model, percent, p.wfcWholeMap, std::max(1, p.wfcContext), std::max(1, p.wfcTries),
+        const bool whole = p.wfcWholeMap && p.width * p.height <= p.wfcWholeMapCells;
+        fillWithWfc(*p.model, percent, whole, std::max(1, p.wfcContext), std::max(1, p.wfcTries),
                     std::max(1, p.wfcNodeBudget), c, rooms, walls == Walls::Fence, g.t, out.start,
                     out.exit, entry, widened, byPattern, rng);
         for (char left : byPattern) left ? ++out.fallbackRooms : ++out.wfcRooms;
@@ -687,15 +688,15 @@ void addSpikes(Result& res, int target, const wfc::Model* model, int maxUnknown,
     const int want = target - countTiles(g, T_CRACKED);
     if (want <= 0) return;
     auto walkable = [&](int x, int y) {
-        return Grid::inBounds(x, y) && g.at(x, y) >= T_FIRST_WALKABLE;
+        return g.inBounds(x, y) && g.at(x, y) >= T_FIRST_WALKABLE;
     };
 
     // Weighted random order without floating point (which could round
     // differently in the browser): every cell goes in `weight` times, the pool
     // is shuffled, and a cell's first appearance is its place in the order.
     std::vector<Coord> pool;
-    for (int y = 0; y < Grid::H; ++y) {
-        for (int x = 0; x < Grid::W; ++x) {
+    for (int y = 0; y < g.h; ++y) {
+        for (int x = 0; x < g.w; ++x) {
             const std::uint8_t t = g.at(x, y);
             if (t != T_GROUND && t != T_CARROT) continue;
             const bool n = walkable(x, y - 1), s = walkable(x, y + 1);
@@ -738,7 +739,7 @@ void addSpikes(Result& res, int target, const wfc::Model* model, int maxUnknown,
             g.at(cell) = old;
         }
     }
-    for (int i = 0; i < Grid::kCells; ++i) res.canvas.cells[static_cast<std::size_t>(i)] = g.cells[i];
+    res.canvas = Canvas::fromGrid(g);
 }
 
 }  // namespace
@@ -776,8 +777,7 @@ Result generate(const Params& params, std::uint32_t seed) {
         if (h.verdict != hint::Verdict::Winnable && res.wfcRooms > 0) {
             h = repairSpikes(level, res.rooms, rng);
             res.spikesRepaired = true;
-            for (int i = 0; i < Grid::kCells; ++i)
-                res.canvas.cells[static_cast<std::size_t>(i)] = level.grid.cells[i];
+            res.canvas = Canvas::fromGrid(level.grid);
         }
         if (h.verdict == hint::Verdict::Winnable) {
             res.solution = h.moves;
@@ -789,6 +789,27 @@ Result generate(const Params& params, std::uint32_t seed) {
         last = std::move(res);
     }
     return last;
+}
+
+Params Params::forSize(int width, int height) {
+    Params p;
+    p.width = width;
+    p.height = height;
+    const int side = std::max(width, height);
+    if (side <= 18) {
+        p.roomSize = 4;
+        p.wfcCarrotPercent = 700;
+        p.spikeTarget = 6;
+    } else if (side <= 26) {
+        p.roomSize = 5;
+        p.wfcCarrotPercent = 320;
+        p.spikeTarget = 12;
+    } else {
+        p.roomSize = 6;
+        p.wfcCarrotPercent = 300;
+        p.spikeTarget = 20;
+    }
+    return p;
 }
 
 const char* wallsName(Walls walls) {

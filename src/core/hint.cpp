@@ -25,13 +25,13 @@ struct Model {
     // Neighbours in a fixed order (up, down, left, right) so that ties between
     // equally short paths always break the same way.
     int neighbours(int c, std::array<int, 4>& out) const {
-        const int x = c % Grid::W, y = c / Grid::W;
+        const int x = c % Grid::kStride, y = c / Grid::kStride;
         const int nx[4] = {x, x, x - 1, x + 1};
         const int ny[4] = {y - 1, y + 1, y, y};
         int n = 0;
         for (int k = 0; k < 4; ++k) {
-            if (!Grid::inBounds(nx[k], ny[k])) continue;
-            const int i = ny[k] * Grid::W + nx[k];
+            if (!Grid::inStorage(nx[k], ny[k])) continue;
+            const int i = ny[k] * Grid::kStride + nx[k];
             if (walk[i]) out[n++] = i;
         }
         return n;
@@ -71,7 +71,7 @@ bool isWon(const Model& m, const State& s) {
 }
 
 bool adjacent(int a, int b) {
-    const int dx = a % Grid::W - b % Grid::W, dy = a / Grid::W - b / Grid::W;
+    const int dx = a % Grid::kStride - b % Grid::kStride, dy = a / Grid::kStride - b / Grid::kStride;
     return (dx == 0 && (dy == 1 || dy == -1)) || (dy == 0 && (dx == 1 || dx == -1));
 }
 
@@ -373,8 +373,8 @@ struct Abstraction {
 };
 
 Dir direction(int from, int to) {
-    if (to == from - Grid::W) return Dir::Up;
-    if (to == from + Grid::W) return Dir::Down;
+    if (to == from - Grid::kStride) return Dir::Up;
+    if (to == from + Grid::kStride) return Dir::Down;
     if (to == from - 1) return Dir::Left;
     return Dir::Right;
 }
@@ -411,7 +411,7 @@ std::vector<Coord> cellsAlong(Coord start, const std::vector<Dir>& moves) {
 
 Result compute(const Grid& grid, Coord pos, const std::vector<Coord>& reference,
                const Options& options) {
-    if (!supported(grid) || !Grid::inBounds(pos.x, pos.y)) return {};
+    if (!supported(grid) || !grid.inBounds(pos.x, pos.y)) return {};
     const Model m = buildModel(grid);
     State state;
     state.pos = pos.index();
@@ -429,7 +429,7 @@ Result compute(const Grid& grid, Coord pos, const std::vector<Coord>& reference,
     // 2. back to the reference path
     std::vector<int> refCells;
     for (Coord c : reference)
-        refCells.push_back(Grid::inBounds(c.x, c.y) ? c.index() : -1);
+        refCells.push_back(grid.inBounds(c.x, c.y) ? c.index() : -1);
     if (auto path = backToReference(m, state, refCells))
         return winnable(Stage::Reference, state.pos, *path);
     if (!options.useSolver) return {Verdict::Unknown, Stage::Reference, {}};

@@ -106,8 +106,28 @@ void App::shutdown() {
 void App::applyLayout() {
     const int w = gfx_.logicalWidth();
     const int h = gfx_.logicalHeight();
-    SDL_SetWindowSize(window_, w * windowScale_, h * windowScale_);
+    // A big board would make a huge window: past kMaxWindowSide it is scaled
+    // down (SDL fits the logical size into it). In the browser the scale is 1
+    // and the canvas keeps every pixel; the page's CSS fits it to the screen.
+    int ww = w * windowScale_, wh = h * windowScale_;
+    const int side = std::max(ww, wh);
+    if (side > kMaxWindowSide) {
+        ww = ww * kMaxWindowSide / side;
+        wh = wh * kMaxWindowSide / side;
+    }
+    SDL_SetWindowSize(window_, ww, wh);
     SDL_RenderSetLogicalSize(renderer_, w, h);
+}
+
+// The board is the level's size while a level is on screen and the classic
+// 16x16 on the menus; when that changes, so do the window and the viewport.
+void App::syncBoard() {
+    const bool level = screen_ == Screen::Play || screen_ == Screen::Cleared;
+    const int w = level ? game_.grid().w : Grid::kClassic;
+    const int h = level ? game_.grid().h : Grid::kClassic;
+    if (w == gfx_.boardW() && h == gfx_.boardH()) return;
+    gfx_.setBoard(w, h);
+    applyLayout();
 }
 
 void App::setViewMode(gfx::ViewMode m) {
@@ -135,7 +155,7 @@ void App::startLevel(Mode mode, int index) {
 }
 
 void App::generateLevel() {
-    if (!game_.loadProcedural(0)) {  // 0 picks a random seed
+    if (!game_.loadProcedural(0, generatedSize_, generatedSize_)) {  // 0 picks a random seed
         std::fprintf(stderr, "cannot generate a level\n");
         return;
     }
@@ -335,6 +355,12 @@ void App::onKey(SDL_Keycode key) {
             if (screen_ == Screen::Play) startLevel(mode_, 0);
             break;
         case SDLK_g: generateLevel(); break;
+        case SDLK_b:
+            // the size of generated maps: 16, 24, 32 cells a side, then back
+            generatedSize_ = generatedSize_ >= Grid::kMaxW ? Grid::kClassic : generatedSize_ + 8;
+            std::printf("[gen] map size %dx%d\n", generatedSize_, generatedSize_);
+            if (screen_ == Screen::Play && game_.levelIndex() < 0) generateLevel();
+            break;
         case SDLK_q: goToMainMenu(); break;
         default: break;
     }
@@ -505,6 +531,7 @@ void App::stepLogic() {
 }
 
 void App::render() {
+    syncBoard();
     gfx_.clear();
 
     switch (screen_) {

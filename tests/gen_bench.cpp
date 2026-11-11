@@ -7,9 +7,10 @@
 //   --count N      levels to generate (10)
 //   --seed S       seed of the first level; the next ones count up (1)
 //   --algo A       rooms | walk -- walk is the old random-walk generator (rooms)
-//   --size WxH     map size (16x16); a bigger map is printed but not verified,
-//                  the engine plays 16x16 only
-//   --room R       room interior, cells per side (4)
+//   --size WxH     map size (16x16), with the defaults roomgen::Params::forSize
+//                  picks for it; a map over 32x32 is printed but not verified,
+//                  the engine plays up to 32x32
+//   --room R       room interior, cells per side (4 on 16x16)
 //   --walls W      auto | fence | thin | hedge (auto)
 //   --fill F  --main F  --spikes F  --merge F  --inset F  --empty F
 //                  the chances in roomgen::Params
@@ -27,7 +28,7 @@
 //                  measured against the even ones, so that the score is not
 //                  just WFC reproducing its own training data
 //   --assets DIR   asset root with the original levels (assets/v1)
-//   --out DIR      also write every 16x16 level to DIR/gen_<seed>.lvl
+//   --out DIR      also write every playable level to DIR/gen_<seed>.lvl
 //   -q             summary only
 //
 // "patterns" is the share of 3x3 windows of a map that also occur somewhere in
@@ -76,6 +77,13 @@ struct Options {
 
 Options parse(int argc, char** argv) {
     Options o;
+    // --size picks the defaults for that size (roomgen::Params::forSize), so
+    // it goes first; every other option overrides them wherever it stands.
+    for (int i = 1; i + 1 < argc; ++i) {
+        int w = 0, h = 0;
+        if (std::string(argv[i]) == "--size" && std::sscanf(argv[i + 1], "%dx%d", &w, &h) == 2)
+            o.params = roomgen::Params::forSize(w, h);
+    }
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
         auto value = [&]() -> std::string {
@@ -122,7 +130,7 @@ Options parse(int argc, char** argv) {
         else usage(("unknown option " + a).c_str());
     }
     if (o.algo != "rooms" && o.algo != "walk") usage("--algo: rooms|walk");
-    if (o.algo == "walk" && (o.params.width != Grid::W || o.params.height != Grid::H))
+    if (o.algo == "walk" && (o.params.width != Grid::kClassic || o.params.height != Grid::kClassic))
         usage("the walk generator makes 16x16 maps only");
     return o;
 }
@@ -314,9 +322,9 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "no original levels under %s: similarity is not measured\n",
                      o.assets.c_str());
 
-    const bool playable = o.params.width == Grid::W && o.params.height == Grid::H;
+    const bool playable = o.params.width <= Grid::kMaxW && o.params.height <= Grid::kMaxH;
     Stats generated;
-    int verified = 0, won = 0;
+    int verified = 0, won = 0, roundTrips = 0;
     int wfcRooms = 0, allRooms = 0, repaired = 0;
     double attempts = 0, totalMs = 0, moves = 0;
 
@@ -370,6 +378,15 @@ int main(int argc, char** argv) {
         if (asLevel && ok) replayed = replay(level, solution);
         verified += ok;
         won += replayed;
+        if (asLevel) {
+            // the .lvl text must read back as the same level, size included
+            Level back;
+            const bool same = back.loadFromText(level.toText(level.name)) &&
+                              back.grid.w == level.grid.w && back.grid.h == level.grid.h &&
+                              back.grid.cells == level.grid.cells;
+            roundTrips += same;
+            if (!same) std::printf("seed %u: the .lvl text does not read back the same\n", seed);
+        }
         if (ok) moves += static_cast<double>(solution.size());
 
         const Metrics m = measure(canvas, corpus, false);
@@ -382,7 +399,7 @@ int main(int argc, char** argv) {
         }
 
         if (!o.quiet) {
-            const char* verdict = !playable ? "not verified (the engine plays 16x16 only)"
+            const char* verdict = !playable ? "not verified (the engine plays up to 32x32)"
                                   : ok      ? "verified"
                                             : "NOT WINNABLE";
             std::printf("--- seed %u: %s", seed, verdict);
@@ -402,16 +419,18 @@ int main(int argc, char** argv) {
     if (!corpus.levels.empty()) originals.print("originals");
     generated.print(o.algo.c_str());
     if (playable)
-        std::printf("\nverified %d/%d, replay won %d/%d, %.1f moves, %.2f attempts, %.2f ms per level\n",
-                    verified, o.count, won, o.count, verified ? moves / verified : 0.0,
-                    o.count ? attempts / o.count : 0.0, o.count ? totalMs / o.count : 0.0);
+        std::printf("\nverified %d/%d, replay won %d/%d, .lvl round trip %d/%d, %.1f moves, "
+                    "%.2f attempts, %.2f ms per level\n",
+                    verified, o.count, won, o.count, roundTrips, o.count,
+                    verified ? moves / verified : 0.0, o.count ? attempts / o.count : 0.0,
+                    o.count ? totalMs / o.count : 0.0);
     else
-        std::printf("\n%.2f ms per level, not verified: the engine plays 16x16 only\n",
+        std::printf("\n%.2f ms per level, not verified: the engine plays up to 32x32\n",
                     o.count ? totalMs / o.count : 0.0);
     if (o.algo == "rooms" && o.wfc)
         std::printf("rooms by WFC %d/%d (%.1f%%), spikes repaired in %d levels\n", wfcRooms,
                     allRooms, allRooms ? 100.0 * wfcRooms / allRooms : 0.0, repaired);
     checkAutotile(o.assets);
 
-    return playable && (verified != o.count || won != o.count) ? 1 : 0;
+    return playable && (verified != o.count || won != o.count || roundTrips != o.count) ? 1 : 0;
 }

@@ -22,8 +22,8 @@
 // The layout is winnable by construction (visit side rooms, then cross the
 // next door); step 5 is the safety net and is what makes "verified" a fact.
 //
-// Everything works on a Canvas of any size. Only a Grid-sized canvas can be
-// verified and played until the engine learns bigger maps.
+// Everything works on a Canvas of any size. A canvas the engine can play (up
+// to Grid::kMaxW x Grid::kMaxH) is verified; a bigger one is only drawn.
 #pragma once
 
 #include <cstdint>
@@ -49,8 +49,8 @@ enum class Walls : std::uint8_t {
 enum class RoomKind : std::uint8_t { Start, Main, Exit, Side };
 
 struct Params {
-    int width    = Grid::W;
-    int height   = Grid::H;
+    int width    = Grid::kClassic;
+    int height   = Grid::kClassic;
     int roomSize = 4;            // cells inside one room slot, per side
     Walls walls  = Walls::Auto;
     double fill            = 0.75;  // share of the room slots the level uses (3 rooms at least)
@@ -62,7 +62,7 @@ struct Params {
     // Spikes the level should end up with, doors included (the originals have
     // 6.8 on average). Missing ones are added after the layout: cells are tried
     // in random order (corridor-like cells first) and a spike stays only if the
-    // solver still finds a win. Grid-sized maps only, since it needs the solver.
+    // solver still finds a win. Playable sizes only, since it needs the solver.
     int spikeTarget = 6;
     // With a WFC model, an added spike may make at most this many of the nine
     // 3x3 windows around it unlike anything in the originals. Every added
@@ -94,8 +94,27 @@ struct Params {
     // Try the whole map in one WFC run first, so that each wall is chosen
     // knowing both rooms it separates; room by room only if that fails.
     bool wfcWholeMap = true;
+    // ...but only on maps up to this many cells. A search node copies the
+    // state of every window of the map: at 32x32 the whole-map run took 79 ms
+    // a level against 17 room by room, and filled no more rooms (94% both).
+    int wfcWholeMapCells = 600;
     int wfcTries = 4;         // WFC runs per room before the fixed patterns take over
     int wfcNodeBudget = 300;  // search nodes per run
+
+    // Defaults for a map of the given size, measured with tests/gen_bench.cpp
+    // (100-500 levels each, carrots aimed at the originals' 27% of the
+    // walkable area):
+    //
+    //   map      room  carrot weight  spikes  carrots  likeness  native time
+    //   16x16    4x4   700%            6      27%      52%        9 ms
+    //   24x24    5x5   320%           12      ~27%     ~51%      ~20 ms
+    //   32x32    6x6   300%           20      ~27%     ~43%      ~80 ms
+    //
+    // Bigger rooms for bigger maps keep the number of rooms sensible; their
+    // price is likeness, since the originals' rooms are small (5x5 rooms on
+    // 32x32 score 46%). The spike target stays under the originals' density
+    // on big maps because every spike is one more solver run.
+    static Params forSize(int width, int height);
 };
 
 struct Room {
@@ -116,7 +135,7 @@ struct Result {
     Walls walls = Walls::Auto;  // the style actually used
     // Winning moves from the start. Filled only when `verified`.
     std::vector<Dir> solution;
-    bool verified = false;  // the hint solver found a win (Grid-sized maps only)
+    bool verified = false;  // the hint solver found a win (playable sizes only)
     int attempts = 0;       // layouts built, including the returned one
     std::uint32_t seed = 0;
     int wfcRooms = 0;       // rooms filled by WFC
