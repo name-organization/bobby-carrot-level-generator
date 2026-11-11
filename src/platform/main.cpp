@@ -107,12 +107,6 @@ int main(int argc, char** argv) {
     if (!g_app.init(assetRoot, /*headless=*/false)) return 1;
     if (handheld) g_app.setViewMode(bc::gfx::ViewMode::Handheld);
 
-    #ifdef __EMSCRIPTEN__
-        emscripten_console_log("bobik");
-        emscripten_console_log(startLevelB64.c_str());
-        emscripten_console_log("sysel");
-    #endif
-
     // If shell.html forwarded ?level=<base64url> jump into that level
     if (!startLevelB64.empty()) {
         g_app.startFromEncoded(startLevelB64);
