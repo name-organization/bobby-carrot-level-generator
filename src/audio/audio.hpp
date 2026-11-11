@@ -31,12 +31,20 @@ public:
     bool unlocked() const { return unlocked_; }
 
     void playSound(const std::string& name, float volume = 1.0f);
+    // Loops the track. Asking for the one already playing changes only its
+    // volume and keeps its place, so it can be asked for every frame.
     void playMusic(const std::string& name, float volume = 0.6f);
     void stopMusic();
 
     void setMuted(bool m) { muted_ = m; }
     bool muted() const { return muted_; }
     void toggleMuted() { muted_ = !muted_; }
+
+    // Volume of the music and of the sound effects, 0 (silent) to 1 (full).
+    // Applied on top of the volume each clip is played with, and independent
+    // of mute: unmuting brings back the volume set here.
+    void setMusicVolume(float v);
+    void setSoundVolume(float v);
 
 private:
     struct Clip {
@@ -63,6 +71,8 @@ private:
     SDL_AudioDeviceID device_ = 0;
     bool unlocked_ = false;
     bool muted_ = false;
+    float musicGain_ = 1.0f;
+    float soundGain_ = 1.0f;
 };
 
 }  // namespace bc::audio

@@ -13,22 +13,32 @@ namespace {
 
 constexpr const char* kFileName = "bobby_save.txt";
 
+int clampPercent(int v) { return v < 0 ? 0 : v > 100 ? 100 : v; }
+
+// v2 is v1 with the music and sound volumes after the best times. A v1 save
+// (from before the volume settings) still loads, with full volume.
 std::string serialise(const SaveData& d) {
     std::ostringstream os;
-    os << "v1 " << d.unlockedNormal << ' ' << d.unlockedEgg << ' ' << (d.muted ? 1 : 0);
+    os << "v2 " << d.unlockedNormal << ' ' << d.unlockedEgg << ' ' << (d.muted ? 1 : 0);
     for (int s : d.bestSeconds) os << ' ' << s;
+    os << ' ' << d.musicVolume << ' ' << d.soundVolume;
     return os.str();
 }
 
 bool deserialise(const std::string& text, SaveData& d) {
     std::istringstream is(text);
     std::string tag;
-    if (!(is >> tag) || tag != "v1") return false;
+    if (!(is >> tag) || (tag != "v1" && tag != "v2")) return false;
     int muted = 0;
     if (!(is >> d.unlockedNormal >> d.unlockedEgg >> muted)) return false;
     d.muted = muted != 0;
     for (int& s : d.bestSeconds) {
-        if (!(is >> s)) break;
+        if (!(is >> s)) return true;
+    }
+    int music = 0, sound = 0;
+    if (tag == "v2" && is >> music >> sound) {
+        d.musicVolume = clampPercent(music);
+        d.soundVolume = clampPercent(sound);
     }
     return true;
 }

@@ -51,6 +51,9 @@ public:
     void goToMainMenu();
     // Same as pressing a non-direction key, for the clickable key labels.
     void pressKey(SDL_Keycode key);
+    // The Settings page: music and sound volume in percent (0..100) and mute.
+    // Saved at once. A new sound volume plays a sample at it.
+    void setAudio(int musicPercent, int soundPercent, bool muted);
 
     // Test hooks used by the screenshot tool.
     void forceLevel(Mode mode, int index);
@@ -75,6 +78,10 @@ private:
     void playEventSounds(unsigned events);
     void rememberProgress();
     void reportScreen();
+    // +/- keys: both volumes up or down by one step.
+    void changeVolume(int deltaPercent);
+    void applyAudio();
+    void reportAudio();
 
     SDL_Window* window_ = nullptr;
     SDL_Renderer* renderer_ = nullptr;
@@ -87,6 +94,10 @@ private:
     Screen screen_ = Screen::Title;
     int reportedScreen_ = -1;  // last screen told to the web page
     bool reportedGenerated_ = false;
+    // Last volumes and mute told to the web page; -1: not told yet.
+    int reportedMusic_ = -1;
+    int reportedSound_ = -1;
+    bool reportedMuted_ = false;
     Mode mode_ = Mode::Normal;
     int selected_ = 0;
     int frameTick_ = 0;

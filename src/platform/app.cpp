@@ -15,6 +15,11 @@ namespace {
 constexpr double kStepSeconds = 1.0 / kTicksPerSecond;
 constexpr int kClearedFrames = 90;
 constexpr float kSwipeThreshold = 0.035f;  // fraction of the window
+constexpr int kVolumeStep = 10;            // percent, one +/- press
+// The original game has one music track, the title theme; it loops behind
+// every screen but the ending, which has a jingle of its own.
+constexpr const char* kMusic = "title";
+constexpr float kMusicVolume = 0.5f;
 
 Dir keyToDir(SDL_Keycode k) {
     switch (k) {
@@ -90,8 +95,8 @@ bool App::init(const std::string& assetRoot, bool headless) {
     loadProgress(save_);
     if (!headless_) {
         mixer_.init(assetRoot_);
-        mixer_.setMuted(save_.muted);
     }
+    applyAudio();
 
     lastCounter_ = SDL_GetPerformanceCounter();
     return true;
@@ -152,7 +157,6 @@ void App::startLevel(Mode mode, int index) {
     screen_ = Screen::Play;
     held_ = Dir::None;
     pendingTap_ = Dir::None;
-    mixer_.stopMusic();
 }
 
 void App::generateLevel(unsigned int seed) {
@@ -163,7 +167,6 @@ void App::generateLevel(unsigned int seed) {
     screen_ = Screen::Play;
     held_ = Dir::None;
     pendingTap_ = Dir::None;
-    mixer_.stopMusic();
 }
 
 void App::askToGenerate() {
@@ -195,7 +198,6 @@ void App::goToMainMenu() {
     held_ = Dir::None;
     pendingTap_ = Dir::None;
     clearedTimer_ = 0;
-    mixer_.playMusic("title", 0.5f);
 }
 
 // The start page and the footer live in web/shell.html; it shows the menu
@@ -209,6 +211,50 @@ void App::reportScreen() {
     reportedGenerated_ = generated;
 #ifdef __EMSCRIPTEN__
     EM_ASM({ if (Module.onScreenChange) Module.onScreenChange($0, !!$1); }, current, generated);
+#endif
+}
+
+void App::applyAudio() {
+    mixer_.setMuted(save_.muted);
+    mixer_.setMusicVolume(save_.musicVolume / 100.0f);
+    mixer_.setSoundVolume(save_.soundVolume / 100.0f);
+}
+
+void App::setAudio(int musicPercent, int soundPercent, bool muted) {
+    mixer_.unlock();  // the page calls this from a click or a key press
+    musicPercent = std::clamp(musicPercent, 0, 100);
+    soundPercent = std::clamp(soundPercent, 0, 100);
+    const bool soundChanged = soundPercent != save_.soundVolume;
+    save_.musicVolume = musicPercent;
+    save_.soundVolume = soundPercent;
+    save_.muted = muted;
+    applyAudio();
+    saveProgress(save_);
+    if (soundChanged) mixer_.playSound("carrot");
+}
+
+void App::changeVolume(int deltaPercent) {
+    save_.musicVolume = std::clamp(save_.musicVolume + deltaPercent, 0, 100);
+    save_.soundVolume = std::clamp(save_.soundVolume + deltaPercent, 0, 100);
+    applyAudio();
+    saveProgress(save_);
+    std::printf("[audio] music %d%%, sounds %d%%\n", save_.musicVolume, save_.soundVolume);
+    mixer_.playSound("carrot");  // so the new volume can be heard
+}
+
+// The Settings page on the web shows the volumes and mute, which the M and
+// +/- keys change too.
+void App::reportAudio() {
+    const bool muted = mixer_.muted();
+    if (save_.musicVolume == reportedMusic_ && save_.soundVolume == reportedSound_ &&
+        muted == reportedMuted_)
+        return;
+    reportedMusic_ = save_.musicVolume;
+    reportedSound_ = save_.soundVolume;
+    reportedMuted_ = muted;
+#ifdef __EMSCRIPTEN__
+    EM_ASM({ if (Module.onAudioChange) Module.onAudioChange($0, $1, !!$2); },
+           save_.musicVolume, save_.soundVolume, muted);
 #endif
 }
 
@@ -237,6 +283,7 @@ void App::advanceLevel() {
         startLevel(mode_, next);
     } else {
         screen_ = Screen::End;
+        mixer_.stopMusic();
         mixer_.playSound("end", 0.8f);
     }
 }
@@ -298,7 +345,6 @@ void App::onConfirm() {
             break;
         case Screen::End:
             screen_ = Screen::Title;
-            mixer_.playMusic("title", 0.5f);
             break;
         case Screen::Play:
             break;
@@ -310,7 +356,6 @@ void App::onBack() {
         case Screen::Play:
         case Screen::Cleared:
             screen_ = Screen::Select;
-            mixer_.playMusic("title", 0.5f);
             break;
         case Screen::Select:
             screen_ = Screen::Title;
@@ -358,6 +403,9 @@ void App::onKey(SDL_Keycode key) {
         case SDLK_h: if (screen_ == Screen::Play) game_.toggleHint(); break;
         case SDLK_f: gfx_.toggleViewMode(); applyLayout(); break;
         case SDLK_m: mixer_.toggleMuted(); save_.muted = mixer_.muted(); saveProgress(save_); break;
+        // '+' is Shift and '=' on most keyboards, so '=' counts as '+' too.
+        case SDLK_PLUS: case SDLK_EQUALS: case SDLK_KP_PLUS: changeVolume(kVolumeStep); break;
+        case SDLK_MINUS: case SDLK_KP_MINUS: changeVolume(-kVolumeStep); break;
         case SDLK_n:
             if (screen_ == Screen::Play &&
                 game_.levelIndex() + 1 < Level::levelCount(mode_))
@@ -546,6 +594,9 @@ void App::handleEvent(const SDL_Event& e) {
 
 void App::stepLogic() {
     ++frameTick_;
+    // Browsers start audio only after the first key press or tap, so the
+    // music starts then; from there it keeps playing across screens.
+    if (mixer_.unlocked() && screen_ != Screen::End) mixer_.playMusic(kMusic, kMusicVolume);
     touchFade_ = touchSeen_ ? std::min(1.0f, touchFade_ + 0.05f)
                             : std::max(0.0f, touchFade_ - 0.02f);
 
@@ -571,10 +622,6 @@ void App::stepLogic() {
 
         case Screen::Cleared:
             if (++clearedTimer_ >= kClearedFrames) advanceLevel();
-            break;
-
-        case Screen::Title:
-            if (frameTick_ % 600 == 1 && mixer_.unlocked()) mixer_.playMusic("title", 0.5f);
             break;
 
         default:
@@ -643,6 +690,7 @@ void App::frame() {
 
     render();
     reportScreen();
+    reportAudio();
 }
 
 }  // namespace bc::platform

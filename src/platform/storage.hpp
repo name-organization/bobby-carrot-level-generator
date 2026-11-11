@@ -11,6 +11,9 @@ struct SaveData {
     int unlockedEgg = 1;
     int bestSeconds[50] = {};  // 0 means "never finished"
     bool muted = false;
+    // Percent, 0 to 100, in steps of 10: the Settings page and the +/- keys.
+    int musicVolume = 100;
+    int soundVolume = 100;
 };
 
 // On the web this is localStorage, which needs no async flush, unlike IDBFS.

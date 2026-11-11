@@ -28,13 +28,21 @@ Game available at [http://localhost:8080](http://localhost:8080)
 7. Walk onto the exit when it opens.
 8. The next level starts by itself.
 9. Press <kbd>Q</kbd> to go back to the start page.
+10. **Settings** on the start page sets the music and sound volume and mutes
+    the game; <kbd>+</kbd> / <kbd>−</kbd> change both volumes during play.
+    The settings are saved in the browser with the progress.
 
-The keys for the current screen are listed under the game; each of them can
-also be clicked. All keys:
+The music is the original game's theme; it loops behind every screen but the
+ending.
+
+On the start page, Settings and New level the buttons are picked with
+<kbd>↑</kbd> <kbd>↓</kbd> or the mouse and pressed with <kbd>Enter</kbd> or a
+click; <kbd>Esc</kbd> goes back. The keys for the current screen or page are
+listed under the game; each of them can also be clicked. All keys:
 
 | Key | Action |
 |---|---|
-| <kbd>↑</kbd> <kbd>↓</kbd> <kbd>←</kbd> <kbd>→</kbd> | move / choose |
+| <kbd>↑</kbd> <kbd>↓</kbd> <kbd>←</kbd> <kbd>→</kbd> | move / choose; in Settings <kbd>←</kbd> <kbd>→</kbd> set the selected volume |
 | <kbd>Enter</kbd> | confirm, start the selected level |
 | <kbd>H</kbd> | show or hide the hint |
 | <kbd>R</kbd> | restart the level |
@@ -42,10 +50,11 @@ also be clicked. All keys:
 | <kbd>B</kbd> | size of generated maps: 16, 24 or 32 cells a side (generates one in a generated level) |
 | <kbd>T</kbd> | carrot / egg levels (not in a generated level) |
 | <kbd>E</kbd> | copy a link to the generated level (its seed and map size) |
-| <kbd>Esc</kbd> | back: from a level to the level list, from the list to the main menu |
+| <kbd>Esc</kbd> | back: from a level to the level list, from the list to the main menu; closes Settings and New level |
 | <kbd>Q</kbd> | main menu |
 | <kbd>F</kbd> | whole map / scrolling close-up view |
 | <kbd>M</kbd> | sound on / off |
+| <kbd>+</kbd> <kbd>−</kbd> | music and sound volume up / down by 10% |
 
 ## `.lvl` format
 
