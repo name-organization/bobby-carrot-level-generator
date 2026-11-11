@@ -18,8 +18,10 @@ public:
     explicit Game(std::string assetRoot = "assets/v1") : root_(std::move(assetRoot)) {}
 
     bool load(Mode mode, int index);
-    // A new room-based level (roomgen.hpp); 0 picks a random seed.
-    bool loadProcedural(unsigned int seed = 0);
+    // A new room-based level (roomgen.hpp) of the given size, up to
+    // Grid::kMaxW x Grid::kMaxH; seed 0 picks a random one.
+    bool loadProcedural(unsigned int seed = 0, int width = Grid::kClassic,
+                        int height = Grid::kClassic);
     // Plays a level that is not one of the shipped files: a generated or an
     // imported one. `reference` is a winning solution as moves from the start,
     // if known. Always succeeds.

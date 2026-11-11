@@ -1,5 +1,6 @@
 #include "level.hpp"
 
+#include <algorithm>
 #include <cstdio>
 #include <string>
 #include <vector>
@@ -32,13 +33,15 @@ void Level::rescan() {
     start       = Coord{0, 0};
     exit        = Coord{0, 0};
 
-    for (int i = 0; i < Grid::kCells; ++i) {
-        switch (grid.cells[i]) {
-            case T_CARROT: ++carrotTotal; break;
-            case T_GRASS:  ++eggTotal;    break;
-            case T_START:  start = Coord{i % Grid::W, i / Grid::W}; break;
-            case T_EXIT:   exit  = Coord{i % Grid::W, i / Grid::W}; break;
-            default: break;
+    for (int y = 0; y < grid.h; ++y) {
+        for (int x = 0; x < grid.w; ++x) {
+            switch (grid.at(x, y)) {
+                case T_CARROT: ++carrotTotal; break;
+                case T_GRASS:  ++eggTotal;    break;
+                case T_START:  start = Coord{x, y}; break;
+                case T_EXIT:   exit  = Coord{x, y}; break;
+                default: break;
+            }
         }
     }
 }
@@ -64,8 +67,17 @@ bool Level::loadFromText(std::string_view text, std::string* error) {
         pos = eol + 1;
     }
 
+    // Every line but a comment is a row, blank ones included: with path
+    // written as a space, a row of open ground looks exactly like an empty
+    // line, so skipping blanks would quietly delete it. The level is as high
+    // as there are rows and as wide as the longest one.
+    struct Row {
+        std::string_view text;
+        int lineNo;
+    };
+    std::vector<Row> rows;
+    int width = 0;
     for (std::string_view raw : lines) {
-        if (row >= Grid::H) break;
         ++lineNo;
         std::string_view line = trimCarriageReturn(raw);
 
@@ -81,42 +93,48 @@ bool Level::loadFromText(std::string_view text, std::string* error) {
             continue;
         }
 
-        // Every remaining line is a row, blank ones included: with path written
-        // as a space, a row of open ground looks exactly like an empty line, so
-        // skipping blanks would quietly delete it.
-        if (line.size() > Grid::W) {
+        if (static_cast<int>(line.size()) > Grid::kMaxW) {
             char buf[160];
             std::snprintf(buf, sizeof(buf), "line %d: expected at most %d characters, got %d",
-                          lineNo, Grid::W, static_cast<int>(line.size()));
+                          lineNo, Grid::kMaxW, static_cast<int>(line.size()));
             fail(error, buf);
             return false;
         }
+        rows.push_back({line, lineNo});
+        width = std::max(width, static_cast<int>(line.size()));
+    }
 
+    if (rows.empty() || width == 0) {
+        fail(error, "no map rows");
+        return false;
+    }
+    if (static_cast<int>(rows.size()) > Grid::kMaxH) {
+        char buf[160];
+        std::snprintf(buf, sizeof(buf), "expected at most %d rows, got %d", Grid::kMaxH,
+                      static_cast<int>(rows.size()));
+        fail(error, buf);
+        return false;
+    }
+    parsed.w = width;
+    parsed.h = static_cast<int>(rows.size());
+
+    for (const Row& r : rows) {
         // A short row is the rest of it being path.
-        for (int x = static_cast<int>(line.size()); x < Grid::W; ++x) {
-            parsed.cells[row * Grid::W + x] = T_GROUND;
-        }
+        for (int x = static_cast<int>(r.text.size()); x < width; ++x) parsed.at(x, row) = T_GROUND;
 
-        for (int x = 0; x < static_cast<int>(line.size()); ++x) {
-            const int tile = charToTile(line[x]);
+        for (int x = 0; x < static_cast<int>(r.text.size()); ++x) {
+            const int tile = charToTile(r.text[x]);
             if (tile < 0) {
                 char buf[160];
                 std::snprintf(buf, sizeof(buf),
-                              "line %d, column %d: unknown character '%c'", lineNo,
-                              x + 1, line[x]);
+                              "line %d, column %d: unknown character '%c'", r.lineNo,
+                              x + 1, r.text[x]);
                 fail(error, buf);
                 return false;
             }
-            parsed.cells[row * Grid::W + x] = static_cast<std::uint8_t>(tile);
+            parsed.at(x, row) = static_cast<std::uint8_t>(tile);
         }
         ++row;
-    }
-
-    if (row != Grid::H) {
-        char buf[160];
-        std::snprintf(buf, sizeof(buf), "expected %d rows, got %d", Grid::H, row);
-        fail(error, buf);
-        return false;
     }
 
     grid = parsed;
@@ -149,7 +167,7 @@ bool Level::loadFromFile(const std::string& path, std::string* error) {
 
 std::string Level::toText(std::string_view title) const {
     std::string out;
-    out.reserve(Grid::kCells + Grid::H + title.size() + 8);
+    out.reserve(static_cast<std::size_t>((grid.w + 1) * grid.h) + title.size() + 8);
 
     if (!title.empty()) {
         out += kCommentChar;
@@ -158,8 +176,8 @@ std::string Level::toText(std::string_view title) const {
         out += '\n';
     }
 
-    for (int y = 0; y < Grid::H; ++y) {
-        for (int x = 0; x < Grid::W; ++x) {
+    for (int y = 0; y < grid.h; ++y) {
+        for (int x = 0; x < grid.w; ++x) {
             out += tileToChar(grid.at(x, y));
         }
         out += '\n';
@@ -183,15 +201,21 @@ std::string Level::pathFor(Mode mode, int index, const std::string& root) {
     return std::string(name);
 }
 
+// The payload is the level's cells row by row, one byte each. A classic
+// 16x16 level is exactly those 256 bytes, as the first codes were; any other
+// size starts with two bytes, width and height. 2 + w * h is never 256 for
+// sizes up to 32x32 (254 = 2 * 127), so the two read apart by length alone.
 std::string Level::encode() const {
-    std::string flattenGrid;
-    flattenGrid.reserve(grid.cells.size());
-
-    for (auto cell : grid.cells) {
-        flattenGrid += static_cast<char>(cell);
+    std::string payload;
+    const bool classic = grid.w == Grid::kClassic && grid.h == Grid::kClassic;
+    payload.reserve(static_cast<std::size_t>(grid.w * grid.h + 2));
+    if (!classic) {
+        payload += static_cast<char>(grid.w);
+        payload += static_cast<char>(grid.h);
     }
-
-    return base64_encode(flattenGrid);
+    for (int y = 0; y < grid.h; ++y)
+        for (int x = 0; x < grid.w; ++x) payload += static_cast<char>(grid.at(x, y));
+    return base64_encode(payload);
 }
 
 bool Level::decode(const std::string& base64Str, std::string* error) {
@@ -203,25 +227,39 @@ bool Level::decode(const std::string& base64Str, std::string* error) {
         return false;
     }
 
-    if (decoded.size() != static_cast<std::size_t>(Grid::kCells)) {
-        char buf[96];
-        std::snprintf(buf, sizeof(buf), "level payload: expected %d bytes, got %zu",
-                      Grid::kCells, decoded.size());
-        fail(error, buf);
-        return false;
-    }
-
     Grid parsed{};
-    for (int i = 0; i < Grid::kCells; ++i) {
-        const auto tile = static_cast<std::uint8_t>(decoded[i]);
-        if (tile >= kTileCount) {
-            char buf[80];
-            std::snprintf(buf, sizeof(buf), "level payload: unknown tile %u at cell %d",
-                          static_cast<unsigned>(tile), i);
+    std::size_t offset = 0;
+    if (decoded.size() == static_cast<std::size_t>(Grid::kClassic * Grid::kClassic)) {
+        parsed.w = parsed.h = Grid::kClassic;
+    } else {
+        const int w = decoded.size() >= 2 ? static_cast<std::uint8_t>(decoded[0]) : 0;
+        const int h = decoded.size() >= 2 ? static_cast<std::uint8_t>(decoded[1]) : 0;
+        if (w < 1 || w > Grid::kMaxW || h < 1 || h > Grid::kMaxH ||
+            decoded.size() != static_cast<std::size_t>(2 + w * h)) {
+            char buf[120];
+            std::snprintf(buf, sizeof(buf),
+                          "level payload: %zu bytes is neither a 16x16 level nor a sized one",
+                          decoded.size());
             fail(error, buf);
             return false;
         }
-        parsed.cells[i] = tile;
+        parsed.w = w;
+        parsed.h = h;
+        offset = 2;
+    }
+
+    for (int y = 0; y < parsed.h; ++y) {
+        for (int x = 0; x < parsed.w; ++x) {
+            const auto tile = static_cast<std::uint8_t>(decoded[offset++]);
+            if (tile >= kTileCount) {
+                char buf[80];
+                std::snprintf(buf, sizeof(buf), "level payload: unknown tile %u at %d,%d",
+                              static_cast<unsigned>(tile), x, y);
+                fail(error, buf);
+                return false;
+            }
+            parsed.at(x, y) = tile;
+        }
     }
 
     grid = parsed;
