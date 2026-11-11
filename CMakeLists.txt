@@ -15,6 +15,9 @@ set(CORE_SOURCES
     src/core/player.cpp
     src/core/game.cpp
     src/core/generator.cpp
+    src/core/roomgen.cpp
+    src/core/autotile.cpp
+    src/core/wfc.cpp
     src/core/sat.cpp
     src/core/hint.cpp
 )
@@ -103,11 +106,17 @@ else()
     add_executable(hint_game tests/hint_game.cpp ${CORE_SOURCES})
     target_link_libraries(hint_game PRIVATE cadical)
 
+    # Level generator bench: generate, verify, replay, compare with the originals.
+    add_executable(gen_bench tests/gen_bench.cpp ${CORE_SOURCES})
+    target_link_libraries(gen_bench PRIVATE cadical)
+
     enable_testing()
     add_test(NAME levels_solvable
              COMMAND solve_levels "${CMAKE_SOURCE_DIR}/assets/v1" 8000000)
     add_test(NAME hint_in_game
              COMMAND hint_game "${CMAKE_SOURCE_DIR}/assets/v1")
+    add_test(NAME generated_levels_winnable
+             COMMAND gen_bench --count 200 -q --assets "${CMAKE_SOURCE_DIR}/assets/v1")
 endif()
 
 target_compile_options(bobby PRIVATE -Wall -Wextra -Wno-unused-parameter)

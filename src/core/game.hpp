@@ -7,6 +7,7 @@
 #include "level.hpp"
 #include "player.hpp"
 #include "rules.hpp"
+#include "wfc.hpp"
 
 namespace bc {
 
@@ -17,7 +18,11 @@ public:
     explicit Game(std::string assetRoot = "assets/v1") : root_(std::move(assetRoot)) {}
 
     bool load(Mode mode, int index);
+    // A new room-based level (roomgen.hpp); 0 picks a random seed.
     bool loadProcedural(unsigned int seed = 0);
+    // Plays a level that is not one of the shipped files, e.g. a generated
+    // one. `reference` is a winning solution as moves from the start, if known.
+    void loadLevel(const Level& level, const std::vector<Dir>& reference = {});
     void restart();
 
     // Queue input for the next tick. `held` is a continuously pressed
@@ -80,8 +85,13 @@ public:
 private:
     void answerHint(bool rejoinOnly);
     void followHint();
+    // Learned from the original carrot levels on first use; nullptr if they
+    // cannot be read, and the generator then uses its fixed patterns.
+    const wfc::Model* wfcModel();
 
     std::string root_;
+    wfc::Model wfcModel_;
+    bool wfcLearned_ = false;
     Level level_;
     Grid grid_;
     Player player_;

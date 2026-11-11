@@ -1,9 +1,12 @@
 #include "game.hpp"
+#include "canvas.hpp"
 #include "generator.hpp"
+#include "roomgen.hpp"
 
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
+#include <random>
 
 namespace bc {
 
@@ -27,13 +30,48 @@ bool Game::load(Mode mode, int index) {
     return true;
 }
 
+const wfc::Model* Game::wfcModel() {
+    if (!wfcLearned_) {
+        wfcLearned_ = true;
+        std::vector<Canvas> samples;
+        for (int i = 0; i < Level::levelCount(Mode::Normal); ++i) {
+            Level original;
+            if (original.loadFromFile(Level::pathFor(Mode::Normal, i, root_)))
+                samples.push_back(Canvas::fromLevel(original));
+        }
+        wfcModel_ = wfc::learn(samples);
+        std::printf("[gen] WFC: %zu patterns from %zu levels\n", wfcModel_.patterns.size(),
+                    samples.size());
+    }
+    return wfcModel_.empty() ? nullptr : &wfcModel_;
+}
+
 bool Game::loadProcedural(unsigned int seed) {
-    Level next = LevelGenerator::generateRandom(seed);
-    level_ = next;
-    mode_ = Mode::Normal;
-    index_ = -1; // Обозначает пользовательский/процедурный уровень
-    restart();
+    if (seed == 0) seed = std::random_device{}();
+    roomgen::Params params;
+    params.model = wfcModel();
+    const roomgen::Result gen = roomgen::generate(params, seed);
+    Level next;
+    if (!gen.canvas.toLevel(next, "generated " + std::to_string(seed))) {
+        // the room generator gave nothing playable: fall back to the old one
+        std::fprintf(stderr, "[gen] seed %u: room generator failed, using the random walk\n", seed);
+        loadLevel(LevelGenerator::generateRandom(seed));
+        return true;
+    }
+    std::printf("[gen] seed %u: %zu rooms (%d by WFC), %s walls, %s after %d attempt(s), %zu moves\n",
+                seed, gen.rooms.size(), gen.wfcRooms, roomgen::wallsName(gen.walls),
+                gen.verified ? "verified" : "NOT verified", gen.attempts, gen.solution.size());
+    loadLevel(next, gen.solution);
     return true;
+}
+
+void Game::loadLevel(const Level& level, const std::vector<Dir>& reference) {
+    level_ = level;
+    mode_ = Mode::Normal;
+    index_ = -1;  // not one of the shipped levels
+    levelReference_ = reference.empty() ? std::vector<Coord>{}
+                                        : hint::cellsAlong(level_.start, reference);
+    restart();
 }
 
 void Game::restart() {
