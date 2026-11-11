@@ -16,11 +16,11 @@ OUT=build-hint
 CAD=src/third_party/cadical
 # Same configuration as the CMake build, see CMakeLists.txt.
 CADFLAGS="-O2 -w -DNDEBUG -DNBUILD -DQUIET -DNTRACING -DNCONTRACTS -DNCLOSEFROM"
-FLAGS="-std=c++20 -O2 -Wall -Wextra -Wno-unused-parameter"
+FLAGS="-std=c++20 -O2 -Wall -Wextra -Wno-unused-parameter -Isrc/third_party/base64"
 # Same list as CORE_SOURCES in CMakeLists.txt.
 CORE="src/core/level.cpp src/core/rules.cpp src/core/player.cpp src/core/game.cpp
       src/core/generator.cpp src/core/roomgen.cpp src/core/autotile.cpp src/core/wfc.cpp
-      src/core/sat.cpp src/core/hint.cpp"
+      src/core/sat.cpp src/core/hint.cpp src/third_party/base64/base64.cpp"
 
 mkdir -p "$OUT/cadical"
 if [ ! -f "$OUT/libcadical.a" ] || [ -n "$(find "$CAD" -newer "$OUT/libcadical.a" | head -1)" ]; then

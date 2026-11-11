@@ -22,9 +22,10 @@ public:
     // Grid::kMaxW x Grid::kMaxH; seed 0 picks a random one.
     bool loadProcedural(unsigned int seed = 0, int width = Grid::kClassic,
                         int height = Grid::kClassic);
-    // Plays a level that is not one of the shipped files, e.g. a generated
-    // one. `reference` is a winning solution as moves from the start, if known.
-    void loadLevel(const Level& level, const std::vector<Dir>& reference = {});
+    // Plays a level that is not one of the shipped files: a generated or an
+    // imported one. `reference` is a winning solution as moves from the start,
+    // if known. Always succeeds.
+    bool loadLevel(const Level& level, const std::vector<Dir>& reference = {});
     void restart();
 
     // Queue input for the next tick. `held` is a continuously pressed

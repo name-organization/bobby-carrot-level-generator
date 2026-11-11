@@ -22,6 +22,13 @@ set(CORE_SOURCES
     src/core/hint.cpp
 )
 
+# base64 library, used by level export/import (src/core/level.cpp), so every
+# target built from CORE_SOURCES needs it.
+set(BASE64_SOURCES
+    src/third_party/base64/base64.cpp
+)
+include_directories(src/third_party/base64)
+
 # CaDiCaL SAT solver, used by the hint (src/core/sat.cpp). Built from its
 # sources without its own configure script: NBUILD makes it guess the build
 # info, and the other switches drop logging, tracing and the fork-based file
@@ -36,6 +43,7 @@ set_target_properties(cadical PROPERTIES CXX_STANDARD 17)
 
 set(GAME_SOURCES
     ${CORE_SOURCES}
+    ${BASE64_SOURCES}
     src/gfx/texture.cpp
     src/gfx/renderer.cpp
     src/gfx/hint_overlay.cpp  # HINT OVERLAY (temporary), see src/gfx/hint_overlay.hpp
@@ -66,6 +74,7 @@ if(EMSCRIPTEN)
         -sFILESYSTEM=1
         -sENVIRONMENT=web
         -sEXIT_RUNTIME=0
+        -lembind
         --preload-file "${CMAKE_SOURCE_DIR}/assets/v1@/assets/v1"
         --shell-file "${CMAKE_SOURCE_DIR}/web/shell.html"
     )
@@ -99,15 +108,15 @@ else()
     # Rule verification harness: proves every original level is still solvable
     # under the reconstructed tile semantics. Native only -- it is a test, not
     # something to ship to the browser.
-    add_executable(solve_levels tests/solve_levels.cpp ${CORE_SOURCES})
+    add_executable(solve_levels tests/solve_levels.cpp ${CORE_SOURCES} ${BASE64_SOURCES})
     target_link_libraries(solve_levels PRIVATE cadical)
 
     # Hint through the real Game class: follow it to the exit on levels 1-7.
-    add_executable(hint_game tests/hint_game.cpp ${CORE_SOURCES})
+    add_executable(hint_game tests/hint_game.cpp ${CORE_SOURCES} ${BASE64_SOURCES})
     target_link_libraries(hint_game PRIVATE cadical)
 
     # Level generator bench: generate, verify, replay, compare with the originals.
-    add_executable(gen_bench tests/gen_bench.cpp ${CORE_SOURCES})
+    add_executable(gen_bench tests/gen_bench.cpp ${CORE_SOURCES} ${BASE64_SOURCES})
     target_link_libraries(gen_bench PRIVATE cadical)
 
     enable_testing()

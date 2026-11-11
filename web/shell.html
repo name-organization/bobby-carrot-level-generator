@@ -102,6 +102,7 @@
     <span data-show="select"><button class="key" type="button" tabindex="-1" data-key="13">Enter</button> play</span>
     <span data-show="end"><button class="key" type="button" tabindex="-1" data-key="13">Enter</button> continue</span>
     <span data-show="play select"><button class="key" type="button" tabindex="-1" data-key="116">T</button> carrot/egg mode</span>
+    <span data-show="play gen"><button class="key" type="button" tabindex="-1" data-key="104">E</button> export level as URL</span>
   </div>
   <div class="row">
     <span data-show="play gen"><button class="key" type="button" tabindex="-1" data-key="1073741906">↑</button><button class="key" type="button" tabindex="-1" data-key="1073741905">↓</button><button class="key" type="button" tabindex="-1" data-key="1073741904">←</button><button class="key" type="button" tabindex="-1" data-key="1073741903">→</button> move</span>
@@ -201,7 +202,19 @@
 
   var Module = {
     canvas: canvas,
-    preRun: [],
+    preRun: [() => {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const level = params.get('level');
+        if (level) {
+          Module.__levelB64 = level;
+          console.log('[bobby] start with level payload, len=' + level.length);
+        }
+      } catch (e) {
+        console.warn('[bobby] failed to parse URL:', e);
+      }
+    }],
+
     postRun: [() => { loader.classList.add('hidden'); canvas.focus(); }],
     // Called by App::reportScreen() whenever the game changes screen, or a
     // generated level replaces a built-in one or the other way round.
