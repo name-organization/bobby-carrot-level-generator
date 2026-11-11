@@ -354,6 +354,32 @@ void App::onKey(SDL_Keycode key) {
             break;
         case SDLK_g: generateLevel(); break;
         case SDLK_q: goToMainMenu(); break;
+        // export level as base64 in URL
+        case SDLK_e: {
+            std::string encoded = toBase64Url(game_.level().encode());
+            #ifdef __EMSCRIPTEN__
+                EM_ASM({
+                    var u = new URL(window.location.href);
+                    u.searchParams.set('level', UTF8ToString($0));
+                    var href = u.toString();
+
+                    window.history.replaceState(null, "", href);
+
+                    if (navigator.clipboard && window.isSecureContext) {
+                        navigator.clipboard.writeText(href).then(function() {
+                            console.log("Copied: " + href);
+                        }, function(e) {
+                            console.warn("clipboard", e);
+                        });
+                    } else {
+                        prompt("Copy link:", href);
+                    }
+                }, encoded.c_str());
+            #else
+                std::fprintf(stderr, "share: %s\n", encoded.c_str());
+            #endif
+                break;
+            }
         default: break;
     }
 }
