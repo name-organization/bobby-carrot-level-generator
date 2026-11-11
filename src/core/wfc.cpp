@@ -252,6 +252,23 @@ Model learn(const std::vector<Canvas>& samples, bool allOrientations) {
     return model;
 }
 
+bool Model::has(const std::array<Symbol, 9>& pattern) const {
+    return std::binary_search(patterns.begin(), patterns.end(), pattern);
+}
+
+int unknownWindows(const Model& model, const Canvas& c, int x, int y) {
+    int unknown = 0;
+    for (int wy = std::max(0, y - 2); wy <= std::min(c.h - 3, y); ++wy) {
+        for (int wx = std::max(0, x - 2); wx <= std::min(c.w - 3, x); ++wx) {
+            std::array<Symbol, 9> key{};
+            for (int k = 0; k < 9; ++k)
+                key[static_cast<std::size_t>(k)] = symbolOf(c.at(wx + k % 3, wy + k / 3));
+            if (!model.has(key)) ++unknown;
+        }
+    }
+    return unknown;
+}
+
 bool solve(const Model& model, Region& region, Rng& rng, int nodeBudget) {
     if (model.empty() || region.w < 3 || region.h < 3) return false;
     if (region.cells.size() != static_cast<std::size_t>(region.w * region.h)) return false;

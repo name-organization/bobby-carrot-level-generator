@@ -53,7 +53,7 @@ struct Params {
     int height   = Grid::H;
     int roomSize = 4;            // cells inside one room slot, per side
     Walls walls  = Walls::Auto;
-    double fill            = 0.7;   // share of the room slots the level uses (3 rooms at least)
+    double fill            = 0.75;  // share of the room slots the level uses (3 rooms at least)
     double mainShare       = 0.65;  // share of used rooms on the start-exit path
     double spikeDoorChance = 0.5;   // per door on the start-exit path
     double mergeChance     = 0.15;  // plain door widened to the whole wall
@@ -64,6 +64,12 @@ struct Params {
     // in random order (corridor-like cells first) and a spike stays only if the
     // solver still finds a win. Grid-sized maps only, since it needs the solver.
     int spikeTarget = 6;
+    // With a WFC model, an added spike may make at most this many of the nine
+    // 3x3 windows around it unlike anything in the originals. Every added
+    // spike costs some likeness: on 300 levels, scored against originals WFC
+    // did not learn from, no added spikes gives 2.1 spikes and 57% of known
+    // windows, at most 2 unknown 4.7 and 48%, no limit 6.0 and 47%.
+    int spikeUnknownWindows = 2;
     int attempts = 40;              // layouts tried until one passes the solver
     // Learned 3x3 patterns (wfc.hpp). With a model the rooms and the walls
     // between them are filled by wave function collapse; without one, or in a
@@ -73,10 +79,23 @@ struct Params {
     // give them (wfc::Region::percent). Hedge: 0 leaves it only where the
     // patterns demand it, like rounded room corners; 10 and up narrows rooms.
     // Carrots: at 100 the walls crowd them out (a 4x4 room is nearly all
-    // edge, and the originals keep a path along their walls); 500 comes
+    // edge, and the originals keep a path along their walls); 700 comes
     // closest to the originals' carrot count, see tests/gen_bench.cpp.
     int wfcHedgePercent = 5;
-    int wfcCarrotPercent = 500;
+    int wfcCarrotPercent = 700;
+    // Spikes: raising it barely adds any (they are rare in the patterns) and
+    // only makes more levels need the spike repair.
+    int wfcSpikePercent = 100;
+    // How far around a room WFC looks: 1 is the room and its walls; 2 also
+    // takes in the next cell beyond each wall, so that what a neighbouring
+    // room already has across the wall constrains this one -- which makes WFC
+    // fail in more rooms (84% filled against 97%), so 1 is the default.
+    int wfcContext = 1;
+    // Try the whole map in one WFC run first, so that each wall is chosen
+    // knowing both rooms it separates; room by room only if that fails.
+    bool wfcWholeMap = true;
+    int wfcTries = 4;         // WFC runs per room before the fixed patterns take over
+    int wfcNodeBudget = 300;  // search nodes per run
 };
 
 struct Room {

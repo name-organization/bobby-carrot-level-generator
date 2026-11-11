@@ -14,9 +14,15 @@
 //   --fill F  --main F  --spikes F  --merge F  --inset F  --empty F
 //                  the chances in roomgen::Params
 //   --spike-target N   spikes a level should end up with (roomgen::Params::spikeTarget)
+//   --spike-unknown N  unknown 3x3 windows an added spike may cause (2)
 //   --content C    wfc | patterns -- how rooms are filled (wfc)
 //   --hedge P      weight of hedge inside rooms for WFC, percent (5)
-//   --carrot P     weight of carrots inside rooms for WFC, percent (300)
+//   --carrot P     weight of carrots inside rooms for WFC, percent (700)
+//   --spike P      weight of spikes inside rooms for WFC, percent (100)
+//   --wfc-context N  --wfc-tries N  --wfc-budget N
+//                  how far around a room WFC looks (1), runs per room (4) and
+//                  search nodes per run (300), see roomgen::Params
+//   --wfc-by-room  skip the whole-map WFC run and go room by room
 //   --holdout      WFC learns from the odd originals only and "patterns" is
 //                  measured against the even ones, so that the score is not
 //                  just WFC reproducing its own training data
@@ -97,7 +103,13 @@ Options parse(int argc, char** argv) {
         else if (a == "--empty") o.params.emptyRoomChance = number();
         else if (a == "--hedge") o.params.wfcHedgePercent = std::atoi(value().c_str());
         else if (a == "--carrot") o.params.wfcCarrotPercent = std::atoi(value().c_str());
+        else if (a == "--spike") o.params.wfcSpikePercent = std::atoi(value().c_str());
+        else if (a == "--wfc-context") o.params.wfcContext = std::atoi(value().c_str());
+        else if (a == "--wfc-tries") o.params.wfcTries = std::atoi(value().c_str());
+        else if (a == "--wfc-budget") o.params.wfcNodeBudget = std::atoi(value().c_str());
+        else if (a == "--wfc-by-room") o.params.wfcWholeMap = false;
         else if (a == "--spike-target") o.params.spikeTarget = std::atoi(value().c_str());
+        else if (a == "--spike-unknown") o.params.spikeUnknownWindows = std::atoi(value().c_str());
         else if (a == "--content") {
             const std::string v = value();
             if (v != "wfc" && v != "patterns") usage("--content: wfc|patterns");
@@ -305,6 +317,7 @@ int main(int argc, char** argv) {
     const bool playable = o.params.width == Grid::W && o.params.height == Grid::H;
     Stats generated;
     int verified = 0, won = 0;
+    int wfcRooms = 0, allRooms = 0, repaired = 0;
     double attempts = 0, totalMs = 0, moves = 0;
 
     for (int k = 0; k < o.count; ++k) {
@@ -321,6 +334,9 @@ int main(int argc, char** argv) {
             solution = r.solution;
             ok = r.verified;
             attempts += r.attempts;
+            wfcRooms += r.wfcRooms;
+            allRooms += static_cast<int>(r.rooms.size());
+            repaired += r.spikesRepaired;
             int path = 0, spikeDoors = 0, merged = 0;
             for (const roomgen::Room& room : r.rooms) {
                 if (room.kind != roomgen::RoomKind::Side) ++path;
@@ -392,6 +408,9 @@ int main(int argc, char** argv) {
     else
         std::printf("\n%.2f ms per level, not verified: the engine plays 16x16 only\n",
                     o.count ? totalMs / o.count : 0.0);
+    if (o.algo == "rooms" && o.wfc)
+        std::printf("rooms by WFC %d/%d (%.1f%%), spikes repaired in %d levels\n", wfcRooms,
+                    allRooms, allRooms ? 100.0 * wfcRooms / allRooms : 0.0, repaired);
     checkAutotile(o.assets);
 
     return playable && (verified != o.count || won != o.count) ? 1 : 0;

@@ -50,7 +50,10 @@ bool Game::loadProcedural(unsigned int seed) {
     if (seed == 0) seed = std::random_device{}();
     roomgen::Params params;
     params.model = wfcModel();
+    const auto started = std::chrono::steady_clock::now();
     const roomgen::Result gen = roomgen::generate(params, seed);
+    const double ms = std::chrono::duration<double, std::milli>(
+                          std::chrono::steady_clock::now() - started).count();
     Level next;
     if (!gen.canvas.toLevel(next, "generated " + std::to_string(seed))) {
         // the room generator gave nothing playable: fall back to the old one
@@ -58,9 +61,10 @@ bool Game::loadProcedural(unsigned int seed) {
         loadLevel(LevelGenerator::generateRandom(seed));
         return true;
     }
-    std::printf("[gen] seed %u: %zu rooms (%d by WFC), %s walls, %s after %d attempt(s), %zu moves\n",
+    std::printf("[gen] seed %u: %zu rooms (%d by WFC), %s walls, %s after %d attempt(s), "
+                "%zu moves, %.1f ms\n",
                 seed, gen.rooms.size(), gen.wfcRooms, roomgen::wallsName(gen.walls),
-                gen.verified ? "verified" : "NOT verified", gen.attempts, gen.solution.size());
+                gen.verified ? "verified" : "NOT verified", gen.attempts, gen.solution.size(), ms);
     loadLevel(next, gen.solution);
     return true;
 }

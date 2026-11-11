@@ -37,10 +37,15 @@ Symbol symbolOf(std::uint8_t tile);
 std::uint8_t tileOf(Symbol s);
 
 struct Model {
-    std::vector<std::array<Symbol, 9>> patterns;  // 3x3, row by row
+    std::vector<std::array<Symbol, 9>> patterns;  // 3x3, row by row, sorted
     std::vector<std::uint32_t> counts;            // how often each occurs
     bool empty() const { return patterns.empty(); }
+    bool has(const std::array<Symbol, 9>& pattern) const;
 };
+
+// How many of the 3x3 windows of `c` that cover (x, y) and lie inside it do
+// not occur in the model (0 to 9)?
+int unknownWindows(const Model& model, const Canvas& c, int x, int y);
 
 Model learn(const std::vector<Canvas>& samples, bool allOrientations = true);
 

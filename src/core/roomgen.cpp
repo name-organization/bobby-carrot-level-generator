@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdio>
 #include <utility>
 
 #include "autotile.hpp"
@@ -200,22 +201,25 @@ void fillRoom(Canvas& c, const Room& room, Pattern pattern, const std::vector<ch
 
 // --- 3b. content by wave function collapse ------------------------------------
 
+constexpr int kWholeMapTries = 2;
+
 wfc::Symbol lowestSymbol(wfc::Mask m) {
     for (int s = 0; s < wfc::kSymbols; ++s)
         if (m & wfc::bit(static_cast<wfc::Symbol>(s))) return static_cast<wfc::Symbol>(s);
     return wfc::Hedge;
 }
 
-// Is every walkable interior cell of the solved region reachable from every
-// door, the start and the exit? The region is the room plus a one-cell ring.
-bool regionConnected(const wfc::Region& region, const std::vector<char>& anchor) {
-    const int w = region.w, h = region.h;
+// Is every walkable cell of the room (x0..x1, y0..y1 inside the solved
+// region) reachable from every door, the start and the exit?
+bool regionConnected(const wfc::Region& region, const std::vector<char>& anchor, int x0, int y0,
+                     int x1, int y1) {
+    const int w = region.w;
     auto walkable = [&](int i) { return (region.cells[static_cast<std::size_t>(i)] & wfc::kWalkable) != 0; };
-    auto inside = [&](int x, int y) { return x >= 1 && x < w - 1 && y >= 1 && y < h - 1; };
+    auto inside = [&](int x, int y) { return x >= x0 && x <= x1 && y >= y0 && y <= y1; };
     std::vector<char> seen(region.cells.size(), 0);
     std::vector<int> stack;
-    for (int i = 0; i < w * h && stack.empty(); ++i)
-        if (anchor[static_cast<std::size_t>(i)]) stack.push_back(i);
+    for (std::size_t i = 0; i < anchor.size() && stack.empty(); ++i)
+        if (anchor[i]) stack.push_back(static_cast<int>(i));
     if (stack.empty()) return true;
     seen[static_cast<std::size_t>(stack.back())] = 1;
     while (!stack.empty()) {
@@ -229,23 +233,25 @@ bool regionConnected(const wfc::Region& region, const std::vector<char>& anchor)
             stack.push_back(j);
         }
     }
-    for (int y = 1; y < h - 1; ++y)
-        for (int x = 1; x < w - 1; ++x)
+    for (int y = y0; y <= y1; ++y)
+        for (int x = x0; x <= x1; ++x)
             if (walkable(y * w + x) && !seen[static_cast<std::size_t>(y * w + x)]) return false;
     return true;
 }
 
 // Fills every room with wave function collapse (wfc.hpp), one room at a time,
 // each together with its ring of walls so that the walls are part of the
-// pattern. A ring cell decided for one room stays fixed for the next. A room
-// WFC cannot fill in a few tries is left plain and marked in `byPattern`, so
-// that the fixed patterns take over there.
+// pattern, and with `context` - 1 more cells around it that only constrain.
+// A ring cell decided for one room stays fixed for the next. A room WFC cannot
+// fill in `tries` tries of `nodeBudget` nodes each is left plain and marked in
+// `byPattern`, so that the fixed patterns take over there.
 //
 // What the layout pins down: doors stay as they are, the cells where they
 // come in stay walkable, start and exit stay path, a merged wall stays open,
 // and a one-cell wall between two rooms may be hedge or fence when the level
 // has fence walls. Everything else inside a room is free.
-void fillWithWfc(const wfc::Model& model, const std::array<int, wfc::kSymbols>& percent, Canvas& c,
+void fillWithWfc(const wfc::Model& model, const std::array<int, wfc::kSymbols>& percent,
+                 bool whole, int context, int tries, int nodeBudget, Canvas& c,
                  const std::vector<Room>& rooms, bool fenceWalls, int wallThickness,
                  Coord start, Coord exit,
                  const std::vector<char>& entry, const std::vector<char>& widened,
@@ -291,27 +297,91 @@ void fillWithWfc(const wfc::Model& model, const std::array<int, wfc::kSymbols>& 
         }
     }
 
-    for (std::size_t r = 0; r < rooms.size(); ++r) {
+    // First the whole map in one go: every wall is then chosen knowing both
+    // rooms it separates. Room by room, a wall decided for one room often
+    // leaves the next with no learned window that fits. A search node here
+    // copies the state of the whole map, so this run gets few tries and the
+    // per-room budget; a map that needs more goes room by room, which is fast.
+    bool wholeDone = false;
+    if (whole) {
+        for (int attempt = 0; attempt < std::min(tries, kWholeMapTries) && !wholeDone; ++attempt) {
+            Region region{c.w, c.h, dom, percent};
+            if (!solve(model, region, rng, nodeBudget)) continue;
+            bool connected = true;
+            for (std::size_t r = 0; r < rooms.size() && connected; ++r) {
+                std::vector<char> anchor(n, 0);
+                for (std::size_t i = 0; i < n; ++i)
+                    anchor[i] = roomAt[i] == static_cast<int>(r) && entry[i];
+                connected = regionConnected(region, anchor, rooms[r].x0, rooms[r].y0, rooms[r].x1,
+                                            rooms[r].y1);
+            }
+            if (!connected) continue;
+            dom = region.cells;
+            std::fill(byPattern.begin(), byPattern.end(), 0);
+            wholeDone = true;
+        }
+    }
+
+    for (std::size_t r = 0; r < rooms.size() && !wholeDone; ++r) {
         const Room& room = rooms[r];
-        const int rx = room.x0 - 1, ry = room.y0 - 1;
-        Region base{room.x1 - room.x0 + 3, room.y1 - room.y0 + 3, {}, percent};
+        // The region is the room, its ring of walls and `context - 1` more
+        // cells, clipped to the map. Only the room and its ring are written
+        // back; the cells beyond only take part in the windows, so that what
+        // a neighbouring room already has beyond the wall is respected.
+        const int rx0 = std::max(0, room.x0 - context), ry0 = std::max(0, room.y0 - context);
+        const int rx1 = std::min(c.w - 1, room.x1 + context);
+        const int ry1 = std::min(c.h - 1, room.y1 + context);
+        Region base{rx1 - rx0 + 1, ry1 - ry0 + 1, {}, percent};
         std::vector<char> anchor;
-        for (int y = ry; y < ry + base.h; ++y) {
-            for (int x = rx; x < rx + base.w; ++x) {
+        for (int y = ry0; y <= ry1; ++y) {
+            for (int x = rx0; x <= rx1; ++x) {
                 base.cells.push_back(dom[index(x, y)]);
                 anchor.push_back(roomAt[index(x, y)] == static_cast<int>(r) && entry[index(x, y)]);
             }
         }
+        const int ix0 = room.x0 - rx0, iy0 = room.y0 - ry0;  // the room inside the region
+        const int ix1 = room.x1 - rx0, iy1 = room.y1 - ry0;
         bool done = false;
-        for (int attempt = 0; attempt < 4 && !done; ++attempt) {
+#ifdef BC_WFC_DEBUG
+        int unsolved = 0, cut = 0;
+#endif
+        for (int attempt = 0; attempt < tries && !done; ++attempt) {
             Region region = base;
-            if (!solve(model, region, rng) || !regionConnected(region, anchor)) continue;
-            for (int y = 0; y < base.h; ++y)
-                for (int x = 0; x < base.w; ++x)
-                    dom[index(rx + x, ry + y)] = region.cells[static_cast<std::size_t>(y * base.w + x)];
+            const bool solved = solve(model, region, rng, nodeBudget);
+            const bool connected = solved && regionConnected(region, anchor, ix0, iy0, ix1, iy1);
+#ifdef BC_WFC_DEBUG
+            unsolved += !solved;
+            cut += solved && !connected;
+#endif
+            if (!connected) continue;
+            for (int y = iy0 - 1; y <= iy1 + 1; ++y)
+                for (int x = ix0 - 1; x <= ix1 + 1; ++x)
+                    dom[index(rx0 + x, ry0 + y)] = region.cells[static_cast<std::size_t>(y * base.w + x)];
             done = true;
         }
         byPattern[r] = !done;
+#ifdef BC_WFC_DEBUG
+        if (!done) {
+            std::printf("WFC failed: unsolved %d, disconnected %d\n", unsolved, cut);
+            for (int y = 0; y < base.h; ++y) {
+                for (int x = 0; x < base.w; ++x) {
+                    const Mask m = base.cells[static_cast<std::size_t>(y * base.w + x)];
+                    const bool in = x >= ix0 && x <= ix1 && y >= iy0 && y <= iy1;
+                    char ch = '?';
+                    if (m == bit(Hedge)) ch = '#';
+                    else if (m == bit(Fence)) ch = '=';
+                    else if (m == bit(Path)) ch = '.';
+                    else if (m == bit(Carrot)) ch = '*';
+                    else if (m == bit(Spike)) ch = '_';
+                    else if (m == kWall) ch = 'w';
+                    else if (m == (bit(Path) | bit(Carrot))) ch = 'p';
+                    else if (m == kAny) ch = in ? ' ' : '?';
+                    std::putchar(ch);
+                }
+                std::putchar('\n');
+            }
+        }
+#endif
         if (!done)
             for (int y = room.y0; y <= room.y1; ++y)
                 for (int x = room.x0; x <= room.x1; ++x) dom[index(x, y)] = bit(Path);
@@ -531,9 +601,10 @@ bool build(const Params& p, Walls walls, Rng& rng, Result& out) {
     std::vector<char> byPattern(rooms.size(), 1);  // rooms left to the fixed patterns
     if (useWfc) {
         const std::array<int, wfc::kSymbols> percent{p.wfcHedgePercent, 100, 100,
-                                                     p.wfcCarrotPercent, 100};
-        fillWithWfc(*p.model, percent, c, rooms, walls == Walls::Fence, g.t, out.start, out.exit,
-                    entry, widened, byPattern, rng);
+                                                     p.wfcCarrotPercent, p.wfcSpikePercent};
+        fillWithWfc(*p.model, percent, p.wfcWholeMap, std::max(1, p.wfcContext), std::max(1, p.wfcTries),
+                    std::max(1, p.wfcNodeBudget), c, rooms, walls == Walls::Fence, g.t, out.start,
+                    out.exit, entry, widened, byPattern, rng);
         for (char left : byPattern) left ? ++out.fallbackRooms : ++out.wfcRooms;
     }
     c.at(out.start.x, out.start.y) = T_START;
@@ -609,7 +680,7 @@ hint::Result repairSpikes(Level& level, const std::vector<Room>& rooms, Rng& rng
 // a cell: 14.7% of corridor cells (open on two opposite sides), 7.5% of
 // corners, 7.8% of cells open on three sides, 6.2% of open floor, and never a
 // dead end.
-void addSpikes(Result& res, int target, Rng& rng) {
+void addSpikes(Result& res, int target, const wfc::Model* model, int maxUnknown, Rng& rng) {
     Level level;
     if (!res.canvas.toLevel(level)) return;
     Grid& g = level.grid;
@@ -647,8 +718,17 @@ void addSpikes(Result& res, int target, Rng& rng) {
         tried[cell.index()] = 1;
         const std::uint8_t old = g.at(cell);
         if (old == T_CARROT && carrots <= 1) continue;  // keep it a carrot level
-        ++tries;
         g.at(cell) = T_CRACKED;
+        if (model) {
+            // only where (nearly) every 3x3 window around the spike has a
+            // precedent in the originals: a random spike breaks their look
+            Canvas view = Canvas::fromLevel(level);
+            if (wfc::unknownWindows(*model, view, cell.x, cell.y) > maxUnknown) {
+                g.at(cell) = old;
+                continue;
+            }
+        }
+        ++tries;
         const hint::Result h = hint::compute(g, level.start, {});
         if (h.verdict == hint::Verdict::Winnable) {
             res.solution = h.moves;
@@ -702,7 +782,8 @@ Result generate(const Params& params, std::uint32_t seed) {
         if (h.verdict == hint::Verdict::Winnable) {
             res.solution = h.moves;
             res.verified = true;
-            addSpikes(res, p.spikeTarget, rng);
+            addSpikes(res, p.spikeTarget, p.model && !p.model->empty() ? p.model : nullptr,
+                      p.spikeUnknownWindows, rng);
             return res;
         }
         last = std::move(res);
