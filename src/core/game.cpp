@@ -109,17 +109,15 @@ void Game::hideHint() {
     hintPath_.clear();
 }
 
-// `rejoinOnly`: Bobby stepped off a shown path. Only the cheap stages run, so
-// he is led back to the remembered route at no cost; the solver is left for
-// an explicit hint request.
+// `rejoinOnly`: Bobby stepped off a shown path. He is led back to the
+// remembered route at no cost; the solver runs only when that route is broken
+// (e.g. he stood on a spike the route still needs).
 void Game::answerHint(bool rejoinOnly) {
     hintRequested_ = false;
     const Coord pos = player_.cell();
 
-    hint::Options options;
-    options.useSolver = !rejoinOnly;
     const auto started = std::chrono::steady_clock::now();
-    const hint::Result result = hint::compute(grid_, pos, reference_, options);
+    const hint::Result result = hint::compute(grid_, pos, reference_);
     const double ms = std::chrono::duration<double, std::milli>(
                           std::chrono::steady_clock::now() - started).count();
 
@@ -128,7 +126,7 @@ void Game::answerHint(bool rejoinOnly) {
                 result.moves.size(), ms);
 
     if (rejoinOnly && result.verdict == hint::Verdict::Unknown) {
-        // the remembered route is broken: hide the hint until H is pressed
+        // the solver ran out of budget: hide the hint until H is pressed
         hintShown_ = false;
         hintPath_.clear();
         return;

@@ -71,8 +71,9 @@ public:
 
     // The last answer, or nullptr if there is none for the current position.
     // Moving along the suggested path shortens it. Moving off it re-routes
-    // back to the remembered path without the solver; if that route is
-    // broken, the hint disappears until the next requestHint().
+    // back to the remembered path, or asks the solver if that route is
+    // broken; if the solver gives up, the hint disappears until the next
+    // requestHint().
     // Its `moves` always start at Bobby's current cell, in step with hintPath().
     const hint::Result* hint() const { return hintShown_ ? &hint_ : nullptr; }
     // Cells still ahead on the suggested path, the next one first.
