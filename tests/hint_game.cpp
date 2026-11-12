@@ -1,9 +1,12 @@
-// Drives the real Game class through the hint API, without graphics:
-// for every base-cell original level it asks for a hint at the start, follows
-// it move by move to the end and expects the level to be won. It also walks
-// level 3 into a known dead end and expects the hint to say so.
-//
-//   hint_game [ASSET_ROOT]
+/**
+ * @file
+ * @brief Drives the real Game class through the hint API, without graphics:
+ * for every base-cell original level it asks for a hint at the start, follows
+ * it move by move to the end and expects the level to be won. It also walks
+ * level 3 into a known dead end and expects the hint to say so.
+ *
+ *   hint_game [ASSET_ROOT]
+ */
 
 #include <cstdio>
 #include <string>
@@ -16,9 +19,7 @@ using namespace bc;
 
 namespace {
 
-// Runs ticks until Bobby stands still again (or the level ends). Standing
-// still is !isMoving() in Idle or Walk: Bobby stays in Walk for seconds after
-// he stops, and a hint must not wait for that.
+/** @brief Tick until stationary, dead or finished; Walk may also be stationary. */
 void settle(Game& g) {
     for (int i = 0; i < 400; ++i) {
         g.update();
@@ -55,8 +56,7 @@ void check(bool ok, const std::string& what) {
     if (!ok) ++failures;
 }
 
-// Carrot blocks the way the game sees them: 2+ carrots side by side at the
-// start of the level, numbered; -1 for every other cell.
+/** @brief Independently label initial carrot blocks; -1 marks non-block cells. */
 std::vector<int> carrotBlocks(const Grid& grid) {
     std::vector<int> block(Grid::kCells, -1);
     int count = 0;

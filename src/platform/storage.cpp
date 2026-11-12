@@ -1,5 +1,6 @@
 #include "storage.hpp"
 
+#include <algorithm>
 #include <cstdio>
 #include <sstream>
 #include <string>
@@ -13,10 +14,11 @@ namespace {
 
 constexpr const char* kFileName = "bobby_save.txt";
 
-int clampPercent(int v) { return v < 0 ? 0 : v > 100 ? 100 : v; }
-
-// v2 is v1 with the music and sound volumes after the best times. A v1 save
-// (from before the volume settings) still loads, with full volume.
+/**
+ * @brief Serialize v2 saves, appending audio volumes after best times.
+ *
+ * @note v1 saves remain readable with default volumes.
+ */
 std::string serialise(const SaveData& d) {
     std::ostringstream os;
     os << "v2 " << d.unlockedNormal << ' ' << d.unlockedEgg << ' ' << (d.muted ? 1 : 0);
@@ -37,8 +39,8 @@ bool deserialise(const std::string& text, SaveData& d) {
     }
     int music = 0, sound = 0;
     if (tag == "v2" && is >> music >> sound) {
-        d.musicVolume = clampPercent(music);
-        d.soundVolume = clampPercent(sound);
+        d.musicVolume = std::clamp(music, 0, 100);
+        d.soundVolume = std::clamp(sound, 0, 100);
     }
     return true;
 }
@@ -53,7 +55,7 @@ void saveProgress(const SaveData& data) {
             try {
                 localStorage.setItem('bobbycarrot.save', UTF8ToString($0));
             } catch (e) {
-                // Private mode or blocked storage: progress just will not stick.
+                // Blocked storage must not interrupt gameplay.
             }
         },
         text.c_str());
@@ -67,8 +69,7 @@ void saveProgress(const SaveData& data) {
 
 bool loadProgress(SaveData& out) {
 #ifdef __EMSCRIPTEN__
-    // emscripten_run_script_string has been stable across every Emscripten
-    // release, unlike the EM_ASM pointer-returning macros.
+
     const char* raw = emscripten_run_script_string(
         "(function(){ try { return localStorage.getItem('bobbycarrot.save') || ''; }"
         "catch (e) { return ''; } })()");

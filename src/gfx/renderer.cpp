@@ -1,6 +1,6 @@
 #include "renderer.hpp"
 
-#include "hint_overlay.hpp"  // HINT OVERLAY (temporary)
+#include "hint_overlay.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -8,7 +8,6 @@
 namespace bc::gfx {
 namespace {
 
-// Sprite sheet geometry of the original art.
 constexpr int kWalkW = 36, kWalkH = 50, kWalkFrames = 8;
 constexpr int kIdleFrames = 3;
 constexpr int kFadeFrames = 9;
@@ -139,8 +138,7 @@ void Renderer::drawPlayer(const Game& game) {
             frame = (p.animTick() / 4) % kIdleFrames;  // 15 fps
             break;
         case Player::State::Walk:
-            // Freeze on the last frame while standing still, exactly as the
-            // original does when you walk into a wall.
+            // The original holds the final walk frame when facing an obstacle.
             frame = p.isMoving() ? (p.animTick() / 2) % kWalkFrames : kWalkFrames - 1;
             break;
         default:
@@ -168,7 +166,6 @@ void Renderer::drawHud(const Game& game) {
     const Texture& hud = tex_.get("hud");
     const int viewW = logicalWidth();
 
-    // Collectible counter, top right.
     const bool carrots = game.usesCarrots();
     const int iconW = carrots ? 46 : 34;
     SDL_Rect iconSrc{carrots ? 0 : 46, 0, iconW, 44};
@@ -176,7 +173,6 @@ void Renderer::drawHud(const Game& game) {
     blit(hud, &iconSrc, iconX, 4);
     drawNumber(game.remaining(), 2, iconX - 27, 18);
 
-    // Keys below it, one slot per colour held.
     int slot = 0;
     const int counts[3] = {game.progress().inv.gray, game.progress().inv.yellow,
                            game.progress().inv.red};
@@ -187,7 +183,6 @@ void Renderer::drawHud(const Game& game) {
         ++slot;
     }
 
-    // Timer, top left, right of the web page's Back button and level with it.
     const int secs = game.elapsedSeconds();
     int m = std::min(99, secs / 60);
     int s = secs / 60 > 99 ? 99 : secs % 60;
@@ -198,7 +193,7 @@ void Renderer::drawHud(const Game& game) {
 void Renderer::drawGame(const Game& game, int frameTick) {
     updateCamera(game);
     drawTiles(game, frameTick);
-    drawHintOverlay(r_, game, camX_, camY_);  // HINT OVERLAY (temporary)
+    drawHintOverlay(r_, game, camX_, camY_);
     drawPlayer(game);
     drawHud(game);
 }
@@ -211,15 +206,14 @@ void Renderer::drawTitle(int frameTick) {
     const Texture& logo = tex_.get("logo");
     blit(logo, nullptr, (logicalWidth() - logo.w) / 2, logicalHeight() / 2 + 16);
 
-    // Blinking prompt built from the on-screen arrow art, since the original
-    // ships no font we could borrow letters from.
+    // The original assets have no font; reuse arrow art for the blinking prompt.
     if ((frameTick / 30) % 2 == 0) {
         const Texture& a = tex_.get("arrow_d");
         blit(a, nullptr, (logicalWidth() - a.w) / 2, logicalHeight() / 2 + 72);
     }
 }
 
-// Level select grid: shared by the drawing and the mouse hit test.
+// Share level-list geometry between drawing and hit testing.
 namespace {
 constexpr int kSelectCols = 6;
 constexpr int kSelectCellW = 44, kSelectCellH = 40;
@@ -228,8 +222,7 @@ constexpr int kSelectOriginY = 90;
 
 int Renderer::levelAt(Mode mode, int x, int y) const {
     const int originX = (logicalWidth() - kSelectCols * kSelectCellW) / 2;
-    // Each cell is centred on its two-digit number, so the cells tile the
-    // grid with no gaps between them.
+    // Center hit boxes on the two-digit labels and tile them without gaps.
     const int left = originX + kGlyphW - kSelectCellW / 2;
     const int top = kSelectOriginY + kGlyphH / 2 - kSelectCellH / 2;
     if (x < left || y < top) return -1;

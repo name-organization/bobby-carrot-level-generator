@@ -15,8 +15,11 @@ struct Texture {
     explicit operator bool() const { return handle != nullptr; }
 };
 
-// Loads PNGs with stb_image so the build needs no SDL_image port: one less
-// moving part in both the native and the Emscripten toolchain.
+/**
+ * @brief Own SDL textures decoded from PNG files using stb_image.
+ *
+ * @note The SDL renderer must outlive this cache.
+ */
 class TextureCache {
 public:
     ~TextureCache();

@@ -57,12 +57,9 @@ GROUND = 18
 
 
 def to_grid(text: str, chars: list[str]) -> bytes:
-    """Mirror of the C++ parser, used only to verify the conversion.
+    """Decode a classic 16x16 map for conversion verification.
 
-    Path is a space, so the two habits a text parser usually has -- skipping
-    blank lines and trimming trailing whitespace -- would both destroy data
-    here. Instead every non-comment line is a row and a short one is padded
-    out with path.
+    Preserve blank rows and spaces: both encode path. Pad short rows with path.
     """
     lookup = {c: i for i, c in enumerate(chars)}
     rows = []

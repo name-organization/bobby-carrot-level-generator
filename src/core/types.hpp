@@ -16,8 +16,7 @@ constexpr int dirDY(Dir d) {
 constexpr bool isHorizontal(Dir d) { return d == Dir::Left || d == Dir::Right; }
 constexpr bool isVertical(Dir d)   { return d == Dir::Up   || d == Dir::Down;  }
 
-// Cells per stored row of a Grid: the widest map the engine plays. A level
-// narrower than that uses the left part of each row.
+/** @brief Stored row width; narrower levels occupy the leftmost cells. */
 constexpr int kGridStride = 32;
 
 struct Coord {
@@ -29,8 +28,7 @@ struct Coord {
     }
 };
 
-// Which collectible a level is built around. The original ships two separate
-// level sets and shows a different HUD icon for each.
+/** @brief Collectible set used by the original level files and HUD. */
 enum class Mode : std::uint8_t { Normal = 0, Egg = 1 };
 
 struct Inventory {
@@ -39,15 +37,13 @@ struct Inventory {
     int red = 0;
 };
 
-// The simulation runs at a fixed rate so that movement speed never depends on
-// the display refresh rate. The original moved Bobby two pixels per frame on a
-// 60 Hz handset, i.e. sixteen frames to cross one 32 px cell.
+/** @brief Fixed simulation rate; rendering never controls movement speed. */
 constexpr int kTicksPerSecond  = 60;
 constexpr int kTileSize        = 32;
 constexpr int kStepPixels      = 2;
-constexpr int kTicksPerStep    = kTileSize / kStepPixels;  // 16
-constexpr int kFadeTicks       = 24;   // 9 frames at 22.5 fps
-constexpr int kDeathTicks      = 54;   // 8 frames at 22.5 fps + held last frame
+constexpr int kTicksPerStep    = kTileSize / kStepPixels;  ///< 16
+constexpr int kFadeTicks       = 24;   ///< 9 frames at 22.5 fps
+constexpr int kDeathTicks      = 54;   ///< 8 frames at 22.5 fps + held last frame
 constexpr int kIdleAfterTicks  = 4 * kTicksPerSecond;
 
 }  // namespace bc

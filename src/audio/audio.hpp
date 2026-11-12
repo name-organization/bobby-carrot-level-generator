@@ -9,13 +9,12 @@
 
 namespace bc::audio {
 
-// A tiny mixer on top of raw SDL audio.
-//
-// The original soundtrack ships as Standard MIDI plus Yamaha SMAF (.mmf),
-// neither of which a browser can play. The MIDI tracks were rendered to Ogg
-// Vorbis ahead of time; the two effects that only ever existed as SMAF
-// (carrot pickup and locked door) are synthesised here instead, which keeps
-// the asset pipeline free of a SMAF decoder nobody maintains.
+/**
+ * @brief SDL audio mixer for Ogg music and synthesized effects.
+ *
+ * @details Carrot and lock effects replace the original SMAF clips, which
+ * are not decoded at runtime.
+ */
 class Mixer {
 public:
     static constexpr int kSampleRate = 44100;
@@ -25,14 +24,12 @@ public:
     bool init(const std::string& assetRoot);
     void shutdown();
 
-    // Browsers refuse to start audio before a user gesture, so playback is
-    // armed on the first key press or tap.
+    /** @brief Start playback after the first user gesture, as required by browsers. */
     void unlock();
     bool unlocked() const { return unlocked_; }
 
     void playSound(const std::string& name, float volume = 1.0f);
-    // Loops the track. Asking for the one already playing changes only its
-    // volume and keeps its place, so it can be asked for every frame.
+    /** @brief Loop a music track; requesting the current track preserves playback position. */
     void playMusic(const std::string& name, float volume = 0.6f);
     void stopMusic();
 
@@ -40,15 +37,13 @@ public:
     bool muted() const { return muted_; }
     void toggleMuted() { muted_ = !muted_; }
 
-    // Volume of the music and of the sound effects, 0 (silent) to 1 (full).
-    // Applied on top of the volume each clip is played with, and independent
-    // of mute: unmuting brings back the volume set here.
+    /** @brief Set music and effect slider levels in [0, 1], independently of mute. */
     void setMusicVolume(float v);
     void setSoundVolume(float v);
 
 private:
     struct Clip {
-        std::vector<std::int16_t> pcm;  // interleaved stereo
+        std::vector<std::int16_t> pcm;  ///< interleaved stereo
     };
     struct Voice {
         const Clip* clip = nullptr;

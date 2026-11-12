@@ -1,17 +1,10 @@
-// Hint logic: can the level still be won from the current state, and how?
-//
-// The live grid is the state dump. Collected carrots are already
-// T_CARROT_TAKEN and used spikes are already T_HOLE, so the grid plus Bobby's
-// cell says everything. Three checks run in order:
-//
-//   1. Flood      BFS over the map: is every remaining carrot and the exit
-//                 still reachable at all?                  -> fast "dead end"
-//   2. Reference  BFS over safe cells back to the reference path, then the
-//                 rest of that path                        -> fast "winnable"
-//   3. Solver     SAT search from the current state        -> exact answer
-//
-// Only the base cell set is covered: ground, carrots, spikes (cracked tiles),
-// start and exit. See docs/smt-formalization.md for the model.
+/**
+ * @file
+ * @brief Winning-route hints for ground, carrots, spikes, start and exit.
+ *
+ * @details Tests reachability, rejoins a remembered route, then uses SAT if needed.
+ * @see docs/smt-formalization.md for the model and completeness argument.
+ */
 #pragma once
 
 #include <vector>
@@ -27,29 +20,32 @@ enum class Stage { Won, Flood, Reference, Solver, Unsupported };
 struct Result {
     Verdict verdict = Verdict::Unknown;
     Stage stage = Stage::Unsupported;
-    // Moves from Bobby's cell to the exit. Filled only for Verdict::Winnable.
-    std::vector<Dir> moves;
+
+    std::vector<Dir> moves;  ///< Winning moves from the current cell; empty for other verdicts.
 };
 
 struct Options {
-    // Total SAT conflicts the solver stage may spend before giving up with
-    // Verdict::Unknown.
-    long long conflictBudget = 400000;
-    // false: stop after the two cheap stages. When the reference cannot be
-    // rejoined the answer is Verdict::Unknown with Stage::Reference.
-    bool useSolver = true;
+    long long conflictBudget = 400000;  ///< Exhaustion returns Verdict::Unknown.
+
+    bool useSolver = true;  ///< False stops at Stage::Reference if cheap checks are inconclusive.
 };
 
-// False when the grid holds tiles outside the base cell set (conveyors, keys,
-// rails, ...); compute() then answers Stage::Unsupported.
+/** @brief Check the base tile set and require exactly one exit. */
 bool supported(const Grid& grid);
 
-// Cells visited by `moves` starting at `start`, including `start` itself.
+/** @brief Expand moves into visited cells, including the start. */
 std::vector<Coord> cellsAlong(Coord start, const std::vector<Dir>& moves);
 
-// `reference` is a winning path as cells, starting anywhere (normally the
-// level start). After a Winnable answer, cellsAlong(pos, result.moves) is the
-// reference to pass next time.
+/**
+ * @brief Find a winning route from the current playfield state.
+ *
+ * @param grid Live grid with collected carrots and collapsed spikes already applied.
+ * @param pos Current player cell.
+ * @param reference Previously winning cell path, which may start elsewhere.
+ * @param options Solver policy and conflict budget.
+ * @return Verdict and moves from pos; Unknown covers unsupported maps and budget exhaustion.
+ * @note Reuse cellsAlong(pos, result.moves) after a Winnable result.
+ */
 Result compute(const Grid& grid, Coord pos, const std::vector<Coord>& reference,
                const Options& options = {});
 

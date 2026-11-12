@@ -1,39 +1,42 @@
-// Level generator bench. Generates levels, checks each one with the hint
-// solver, plays the solution through the real Game class and compares simple
-// metrics with the original levels. No graphics, no SDL.
-//
-//   gen_bench [options]
-//
-//   --count N      levels to generate (10)
-//   --seed S       seed of the first level; the next ones count up (1)
-//   --algo A       rooms | walk -- walk is the old random-walk generator (rooms)
-//   --size WxH     map size (16x16), with the defaults roomgen::Params::forSize
-//                  picks for it; a map over 32x32 is printed but not verified,
-//                  the engine plays up to 32x32
-//   --room R       room interior, cells per side (4 on 16x16)
-//   --walls W      auto | fence | thin | hedge (auto)
-//   --fill F  --main F  --spikes F  --loops F  --merge F  --inset F  --empty F
-//                  the chances in roomgen::Params
-//   --spike-target N   spikes a level should end up with (roomgen::Params::spikeTarget)
-//   --spike-unknown N  unknown 3x3 windows an added spike may cause (2)
-//   --content C    wfc | patterns -- how rooms are filled (wfc)
-//   --hedge P      weight of hedge inside rooms for WFC, percent (5)
-//   --carrot P     weight of carrots inside rooms for WFC, percent (700)
-//   --spike P      weight of spikes inside rooms for WFC, percent (100)
-//   --wfc-context N  --wfc-tries N  --wfc-budget N
-//                  how far around a room WFC looks (1), runs per room (4) and
-//                  search nodes per run (300), see roomgen::Params
-//   --wfc-by-room  skip the whole-map WFC run and go room by room
-//   --holdout      WFC learns from the odd originals only and "patterns" is
-//                  measured against the even ones, so that the score is not
-//                  just WFC reproducing its own training data
-//   --assets DIR   asset root with the original levels (assets/v1)
-//   --out DIR      also write every playable level to DIR/gen_<seed>.lvl
-//   -q             summary only
-//
-// "patterns" is the share of 3x3 windows of a map that also occur somewhere in
-// the original carrot levels: 100% means every local detail has a precedent.
-// For the originals it is measured leave-one-out, against the other 29.
+/**
+ * @file
+ * @brief Level generator bench. Generates levels, checks each one with the hint
+ * solver, plays the solution through the real Game class and compares simple
+ * metrics with the original levels. No graphics, no SDL.
+ *
+ *   gen_bench [options]
+ *
+ *   --count N      levels to generate (10)
+ *   --seed S       seed of the first level; the next ones count up (1)
+ *   --algo A       rooms | walk -- walk is the old random-walk generator (rooms)
+ *   --size WxH     map size (16x16), with the defaults roomgen::Params::forSize
+ *                  picks for it; a map over 32x32 is printed but not verified,
+ *                  the engine plays up to 32x32
+ *   --room R       room interior, cells per side (4 on 16x16)
+ *   --walls W      auto | fence | thin | hedge (auto)
+ *   --fill F  --main F  --spikes F  --loops F  --merge F  --inset F  --empty F
+ *                  the chances in roomgen::Params
+ *   --spike-target N   spikes a level should end up with (roomgen::Params::spikeTarget)
+ *   --spike-unknown N  unknown 3x3 windows an added spike may cause (2)
+ *   --content C    wfc | patterns -- how rooms are filled (wfc)
+ *   --hedge P      weight of hedge inside rooms for WFC, percent (5)
+ *   --carrot P     weight of carrots inside rooms for WFC, percent (700)
+ *   --spike P      weight of spikes inside rooms for WFC, percent (100)
+ *   --wfc-context N  --wfc-tries N  --wfc-budget N
+ *                  how far around a room WFC looks (1), runs per room (4) and
+ *                  search nodes per run (300), see roomgen::Params
+ *   --wfc-by-room  skip the whole-map WFC run and go room by room
+ *   --holdout      WFC learns from the odd originals only and "patterns" is
+ *                  measured against the even ones, so that the score is not
+ *                  just WFC reproducing its own training data
+ *   --assets DIR   asset root with the original levels (assets/v1)
+ *   --out DIR      also write every playable level to DIR/gen_<seed>.lvl
+ *   -q             summary only
+ *
+ * "patterns" is the share of 3x3 windows of a map that also occur somewhere in
+ * the original carrot levels: 100% means every local detail has a precedent.
+ * For the originals it is measured leave-one-out, against the other 29.
+ */
 
 #include <algorithm>
 #include <chrono>
@@ -47,6 +50,7 @@
 
 #include "../src/core/autotile.hpp"
 #include "../src/core/canvas.hpp"
+#include "../src/core/difficulty.hpp"
 #include "../src/core/game.hpp"
 #include "../src/core/generator.hpp"
 #include "../src/core/hint.hpp"
@@ -137,10 +141,6 @@ Options parse(int argc, char** argv) {
     return o;
 }
 
-Canvas fromLevel(const Level& level) { return Canvas::fromLevel(level); }
-
-// --- similarity with the originals ------------------------------------------
-
 // Mechanics the generator does not place yet count as plain path, so that a
 // window is not "new" just for lacking a conveyor.
 char normalise(char ch) {
@@ -173,7 +173,7 @@ Corpus loadCorpus(const std::string& root, int parity = -1) {
         if (parity >= 0 && (i + 1) % 2 != parity) continue;
         Level level;
         if (!level.loadFromFile(Level::pathFor(Mode::Normal, i, root))) continue;
-        corpus.levels.push_back(fromLevel(level));
+        corpus.levels.push_back(Canvas::fromLevel(level));
         const std::vector<std::string> w = windows(corpus.levels.back());
         for (const std::string& key : std::set<std::string>(w.begin(), w.end()))
             ++corpus.levelsWith[key];
@@ -192,8 +192,6 @@ double patternShare(const Canvas& c, const Corpus& corpus, bool self) {
     }
     return static_cast<double>(hits) / static_cast<double>(w.size());
 }
-
-// --- metrics -----------------------------------------------------------------
 
 struct Metrics {
     double area = 0;     // walkable cells
@@ -259,76 +257,9 @@ struct Graph {
     int twoPlus = 0;  // rooms with two doors or more
 };
 
-// --- a naive player ------------------------------------------------------------
-
-// Walks to the nearest carrot left (to the exit once there are none), never
-// onto a hole, breaking ties at random and taking a random step one time in
-// five. It loses when nothing it needs can be reached any more -- a spike it
-// burnt cut it off. How often it loses says how much a level punishes the
-// obvious order; 0% means "grab the nearest carrot" always works.
-bool naiveWins(const Level& level, Rng& rng) {
-    Grid g = level.grid;
-    Coord pos = level.start;
-    int carrots = level.carrotTotal;
-    auto open = [&](Coord c) {
-        return g.inBounds(c.x, c.y) && g.at(c) >= T_FIRST_WALKABLE && g.at(c) != T_HOLE;
-    };
-    std::vector<Dir> dirs{Dir::Up, Dir::Down, Dir::Left, Dir::Right};
-    for (int step = 0; step < 4 * g.w * g.h; ++step) {
-        if (carrots == 0 && pos == level.exit) return true;
-        rng.shuffle(dirs);
-        // breadth-first from Bobby: the first step towards each cell
-        std::vector<int> dist(Grid::kCells, -1);
-        std::vector<Coord> first(Grid::kCells, pos);
-        std::vector<Coord> queue{pos};
-        dist[pos.index()] = 0;
-        Coord target{-1, -1};
-        for (std::size_t head = 0; head < queue.size() && target.x < 0; ++head) {
-            const Coord c = queue[head];
-            for (Dir d : dirs) {
-                const Coord n{c.x + dirDX(d), c.y + dirDY(d)};
-                if (!open(n) || dist[n.index()] != -1) continue;
-                dist[n.index()] = dist[c.index()] + 1;
-                first[n.index()] = c == pos ? n : first[c.index()];
-                queue.push_back(n);
-                const bool wanted = carrots > 0 ? g.at(n) == T_CARROT : n == level.exit;
-                if (wanted) {
-                    target = n;
-                    break;
-                }
-            }
-        }
-        if (target.x < 0) return false;  // cut off
-        Coord next = first[target.index()];
-        if (rng.chance(0.2)) {
-            for (Dir d : dirs) {
-                const Coord n{pos.x + dirDX(d), pos.y + dirDY(d)};
-                if (open(n)) {
-                    next = n;
-                    break;
-                }
-            }
-        }
-        if (g.at(pos) == T_CRACKED) g.at(pos) = T_HOLE;  // a spike fires once left
-        pos = next;
-        if (g.at(pos) == T_CARROT) {
-            g.at(pos) = T_CARROT_TAKEN;
-            --carrots;
-        }
-    }
-    return false;
-}
-
-constexpr int kNaiveTries = 20;
-
 double naiveLossRate(const Level& level, std::uint32_t seed) {
-    Rng rng(seed * 7919u + 1u);
-    int lost = 0;
-    for (int i = 0; i < kNaiveTries; ++i) lost += !naiveWins(level, rng);
-    return static_cast<double>(lost) / kNaiveTries;
+    return difficulty::naiveLossPercent(level, seed) / 100.0;
 }
-
-// --- replay through the real Game ---------------------------------------------
 
 // Same as tests/hint_game.cpp: tick until Bobby stands still again.
 void settle(Game& g) {
@@ -355,8 +286,6 @@ bool replay(const Level& level, const std::vector<Dir>& moves) {
     return g.levelComplete();
 }
 
-// --- autotile against the originals --------------------------------------------
-
 // Strips every hedge and fence piece of the originals down to "hedge" or
 // "fence" and lets autotile() pick them again.
 void checkAutotile(const std::string& root) {
@@ -365,7 +294,7 @@ void checkAutotile(const std::string& root) {
         for (int i = 0; i < Level::levelCount(mode); ++i) {
             Level level;
             if (!level.loadFromFile(Level::pathFor(mode, i, root))) continue;
-            const Canvas original = fromLevel(level);
+            const Canvas original = Canvas::fromLevel(level);
             Canvas c = original;
             for (std::uint8_t& t : c.cells) {
                 if (isHedge(t)) t = T_DEFAULT_GRASS;
@@ -454,7 +383,7 @@ int main(int argc, char** argv) {
             about = buf;
         } else {
             const Level level = LevelGenerator::generateRandom(seed);
-            canvas = fromLevel(level);
+            canvas = Canvas::fromLevel(level);
             const hint::Result h = hint::compute(level.grid, level.start, {});
             ok = h.verdict == hint::Verdict::Winnable;
             solution = h.moves;

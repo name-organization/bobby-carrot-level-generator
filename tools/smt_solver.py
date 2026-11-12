@@ -27,7 +27,6 @@ import z3
 
 MOVES = {(0, -1): "U", (0, 1): "D", (-1, 0): "L", (1, 0): "R"}
 
-# tile ids, see src/core/tiles.hpp
 T_GROUND, T_CARROT, T_CARROT_TAKEN, T_START = 18, 19, 20, 21
 T_CRACKED, T_HOLE, T_EXIT = 30, 31, 44
 
@@ -56,8 +55,6 @@ class State:
 def initial_state(level):
     return State(level.start)
 
-
-# --- level loading -----------------------------------------------------------
 
 def _build(items):
     """items: iterable of ((x, y), kind) with kind in '.C^SE'."""
@@ -110,8 +107,7 @@ def parse_blm(data):
 
 
 def parse_lvl(text):
-    # The game's text format; the character table lives in the C++ header and
-    # tools/blm2lvl.py already knows how to read it.
+    """Decode a classic .lvl using the canonical C++ character table."""
     from blm2lvl import HEADER, load_table, to_grid
     try:
         return parse_grid(to_grid(text, load_table(HEADER)))
@@ -128,8 +124,6 @@ def load(path):
         return parse_blm(path.read_bytes())
     return parse_text(path.read_text())
 
-
-# --- plain graph helpers -----------------------------------------------------
 
 def distances(level, src, blocked):
     dist = {src: 0}
@@ -172,8 +166,6 @@ def path_to_moves(start, path):
         cur = c
     return "".join(out)
 
-
-# --- SMT encoding ------------------------------------------------------------
 
 class Unrolling:
     """Incremental bounded unrolling of the game, constraints 1-7 of the doc."""
@@ -258,7 +250,6 @@ def solve(level, state=None, minimize=True):
     if is_won(level, state):
         return Result(True, [])
 
-    # cheap prefilter: everything still needed must be reachable at all
     todo = level.carrots - state.got
     from_pos = distances(level, state.pos, state.dead)
     if level.exit not in from_pos or not todo <= from_pos.keys():
@@ -272,7 +263,6 @@ def solve(level, state=None, minimize=True):
     unrolling = Unrolling(level, state)
     calls = 0
 
-    # 1) doubling until satisfiable
     hi = max(lo, 1)
     while True:
         calls += 1
@@ -283,7 +273,6 @@ def solve(level, state=None, minimize=True):
         lo = hi + 1
         hi = min(2 * hi, horizon_max)
 
-    # 2) binary search for the shortest solution
     while minimize and lo < hi:
         mid = (lo + hi) // 2
         calls += 1
@@ -294,8 +283,7 @@ def solve(level, state=None, minimize=True):
 
     calls += 1
     assert unrolling.winnable_within(hi)
-    # The game ends on the first winning state; whatever the model does after
-    # it (waiting on the exit, wandering off and back) is padding.
+    # Bounded models may pad the route after the first winning state.
     path, cur = [], state
     for to in unrolling.path(hi):
         cur = step(level, cur, to)
@@ -305,8 +293,6 @@ def solve(level, state=None, minimize=True):
             break
     return Result(True, path, horizon_max, calls)
 
-
-# --- brute force reference ---------------------------------------------------
 
 def brute_force(level, state=None):
     """BFS over (pos, got, dead). Returns shortest length or None."""
@@ -324,8 +310,6 @@ def brute_force(level, state=None):
                 queue.append((nxt, depth + 1))
     return None
 
-
-# --- CLI ---------------------------------------------------------------------
 
 def random_level(rng):
     w, h = rng.randint(3, 6), rng.randint(3, 6)

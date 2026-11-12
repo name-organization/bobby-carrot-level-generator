@@ -1,6 +1,33 @@
 #include "rules.hpp"
 
 namespace bc::rules {
+namespace {
+
+std::uint8_t rotatedRail(std::uint8_t tile) {
+    switch (tile) {
+        case T_CORNER_ES: return T_CORNER_WS;
+        case T_CORNER_WS: return T_CORNER_WN;
+        case T_CORNER_WN: return T_CORNER_NE;
+        case T_CORNER_NE: return T_CORNER_ES;
+        case T_RAIL_H: return T_RAIL_V;
+        case T_RAIL_V: return T_RAIL_H;
+        default: return tile;
+    }
+}
+
+bool allowsDirection(std::uint8_t tile, Dir d) {
+    if ((tile == T_RAIL_H || tile == T_CONVEYOR_L || tile == T_CONVEYOR_R) && isVertical(d))
+        return false;
+    if ((tile == T_RAIL_V || tile == T_CONVEYOR_U || tile == T_CONVEYOR_D) && isHorizontal(d))
+        return false;
+    if (tile == T_CONVEYOR_L && d == Dir::Right) return false;
+    if (tile == T_CONVEYOR_R && d == Dir::Left) return false;
+    if (tile == T_CONVEYOR_U && d == Dir::Down) return false;
+    if (tile == T_CONVEYOR_D && d == Dir::Up) return false;
+    return true;
+}
+
+}  // namespace
 
 bool canStep(const Grid& g, Coord from, Coord to, Dir d, const Inventory& inv) {
     if (!g.inBounds(to.x, to.y)) return false;
@@ -8,7 +35,6 @@ bool canStep(const Grid& g, Coord from, Coord to, Dir d, const Inventory& inv) {
     const std::uint8_t nw = g.at(to);
     const std::uint8_t od = g.at(from);
 
-    // --- destination tile ---------------------------------------------------
     if (isSolidScenery(nw)) return false;
     if (nw == T_GRASS_FLAT) return false;  // already trampled
 
@@ -22,34 +48,12 @@ bool canStep(const Grid& g, Coord from, Coord to, Dir d, const Inventory& inv) {
     if (nw == T_CORNER_WN && (d == Dir::Left  || d == Dir::Up))   return false;
     if (nw == T_CORNER_NE && (d == Dir::Right || d == Dir::Up))   return false;
 
-    if ((nw == T_RAIL_H || nw == T_CONVEYOR_L || nw == T_CONVEYOR_R) && isVertical(d))
-        return false;
-    if ((nw == T_RAIL_V || nw == T_CONVEYOR_U || nw == T_CONVEYOR_D) && isHorizontal(d))
-        return false;
-
-    // A conveyor may only be boarded from behind, never head-on.
-    if (nw == T_CONVEYOR_L && d == Dir::Right) return false;
-    if (nw == T_CONVEYOR_R && d == Dir::Left)  return false;
-    if (nw == T_CONVEYOR_U && d == Dir::Down)  return false;
-    if (nw == T_CONVEYOR_D && d == Dir::Up)    return false;
-
-    // --- source tile --------------------------------------------------------
     if (od == T_CORNER_ES && (d == Dir::Left  || d == Dir::Up))   return false;
     if (od == T_CORNER_WS && (d == Dir::Right || d == Dir::Up))   return false;
     if (od == T_CORNER_WN && (d == Dir::Right || d == Dir::Down)) return false;
     if (od == T_CORNER_NE && (d == Dir::Left  || d == Dir::Down)) return false;
 
-    if ((od == T_RAIL_H || od == T_CONVEYOR_L || od == T_CONVEYOR_R) && isVertical(d))
-        return false;
-    if ((od == T_RAIL_V || od == T_CONVEYOR_U || od == T_CONVEYOR_D) && isHorizontal(d))
-        return false;
-
-    if (od == T_CONVEYOR_L && d == Dir::Right) return false;
-    if (od == T_CONVEYOR_R && d == Dir::Left)  return false;
-    if (od == T_CONVEYOR_U && d == Dir::Down)  return false;
-    if (od == T_CONVEYOR_D && d == Dir::Up)    return false;
-
-    return true;
+    return allowsDirection(nw, d) && allowsDirection(od, d);
 }
 
 unsigned onLeave(Grid& g, Coord c, Progress& p) {
@@ -57,13 +61,14 @@ unsigned onLeave(Grid& g, Coord c, Progress& p) {
     unsigned events = ev::None;
 
     switch (cell) {
-        case T_CORNER_ES: cell = T_CORNER_WS; break;
-        case T_CORNER_WS: cell = T_CORNER_WN; break;
-        case T_CORNER_WN: cell = T_CORNER_NE; break;
-        case T_CORNER_NE: cell = T_CORNER_ES; break;
-
-        case T_RAIL_H:    cell = T_RAIL_V;    break;
-        case T_RAIL_V:    cell = T_RAIL_H;    break;
+        case T_CORNER_ES:
+        case T_CORNER_WS:
+        case T_CORNER_WN:
+        case T_CORNER_NE:
+        case T_RAIL_H:
+        case T_RAIL_V:
+            cell = rotatedRail(cell);
+            break;
 
         case T_CRACKED:   cell = T_HOLE; events |= ev::Cracked; break;
 
@@ -86,14 +91,7 @@ void toggleRedNetwork(Grid& g) {
             case T_SWITCH_RED_ON:  cell = T_SWITCH_RED_OFF; break;
             case T_SWITCH_RED_OFF: cell = T_SWITCH_RED_ON;  break;
 
-            case T_CORNER_ES: cell = T_CORNER_WS; break;
-            case T_CORNER_WS: cell = T_CORNER_WN; break;
-            case T_CORNER_WN: cell = T_CORNER_NE; break;
-            case T_CORNER_NE: cell = T_CORNER_ES; break;
-
-            case T_RAIL_H:    cell = T_RAIL_V;    break;
-            case T_RAIL_V:    cell = T_RAIL_H;    break;
-            default: break;
+            default: cell = rotatedRail(cell); break;
         }
     }
 }

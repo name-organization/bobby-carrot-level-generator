@@ -4,21 +4,23 @@
 
 namespace bc {
 
-// Bobby's state machine. Deterministic and tick-based: no floats feed back
-// into the simulation, so replays and the test solver stay reproducible.
+/** @brief Deterministic player state machine driven by fixed simulation ticks. */
 class Player {
 public:
     enum class State : std::uint8_t { FadeIn, Idle, Walk, Death, FadeOut };
 
     void spawn(Coord at);
 
-    // One 60 Hz simulation tick. `held` is the direction currently pressed,
-    // `buffered` a one-shot press that survives until Bobby is free to move.
-    //
-    // The level is passed in rather than a precomputed "all collected" flag:
-    // the last patch of grass is counted while Bobby leaves it, in the very
-    // same transition that lands him on the exit, so the check has to happen
-    // after onLeave has run.
+    /**
+     * @brief Advance the player by one simulation tick.
+     *
+     * @param[in,out] g Playfield receiving departure and arrival effects.
+     * @param[in,out] p Inventory and collectible counts.
+     * @param lv Original totals used to check completion after leaving grass.
+     * @param held Continuously held direction.
+     * @param buffered One-shot input retained until the player can act.
+     * @return Cell-transition event flags.
+     */
     unsigned update(Grid& g, Progress& p, const Level& lv, Dir held, Dir buffered);
 
     State state() const      { return state_; }
@@ -29,15 +31,17 @@ public:
     bool fadeOutFinished() const { return fadeOutFinished_; }
     bool consumedBuffered() const { return consumedBuffered_; }
 
-    // Progress of the current animation, in ticks since the state was entered.
+    /** @brief Ticks elapsed since entering the current animation state. */
     int stateTick() const    { return stateTick_; }
-    // Free-running counter so the walk cycle is continuous across cells.
+    /** @brief Animation counter that continues across consecutive steps. */
     int animTick() const     { return animTick_; }
     int idleTicks() const    { return idleTicks_; }
 
-    // Fractional cell position used for rendering. During a step this slides
-    // smoothly from the source cell to the destination; during the death
-    // animation it freezes halfway into the hole, exactly like the original.
+    /**
+     * @brief Interpolated position in cells for rendering.
+     *
+     * @details Death freezes the position halfway into the hole.
+     */
     float fx() const;
     float fy() const;
 
