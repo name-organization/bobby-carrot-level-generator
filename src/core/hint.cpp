@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <bitset>
+#include <map>
 #include <optional>
 
 #include "sat.hpp"
@@ -372,6 +373,108 @@ struct Abstraction {
     }
 };
 
+/**
+ * @brief Rebuild a winning path with as few live spikes as the same carrot order allows.
+ *
+ * @details Neither stage avoids spikes: the generator's reference keeps any spike its
+ * solution crosses once, and the solver accepts any region walk. The path is cut at its
+ * milestones (each carrot taken for the first time, and the end); each piece is rebuilt
+ * between the same two cells with the fewest spikes, then the fewest moves, using only
+ * the live spikes the old piece used. Pieces never take a spike from each other, so the
+ * result is as legal as the input, keeps the carrot order and adds no spike; it is longer
+ * only when it has fewer spikes.
+ *
+ * @param m Static puzzle.
+ * @param start State the path starts from.
+ * @param path Legal winning path as cells after start.pos.
+ * @return The rebuilt path, or @p path unchanged if any piece cannot be rebuilt.
+ */
+std::vector<int> spareSpikes(const Model& m, const State& start, const std::vector<int>& path) {
+    // the milestones: indices into `path`
+    std::vector<std::size_t> milestones;
+    {
+        State s = start;
+        for (std::size_t i = 0; i < path.size(); ++i) {
+            const bool fresh = m.carrot[path[i]] && !s.got[path[i]];
+            if (!step(m, s, path[i])) return path;
+            if (fresh || i + 1 == path.size()) milestones.push_back(i);
+        }
+    }
+
+    State s = start;
+    std::vector<int> out;
+    std::size_t from = 0;  // first index of the current piece
+    std::bitset<kCells> allowed;
+    std::array<int, kCells> cost, parent;
+    std::array<int, 4> nb{};
+    // cost of a route: spikes x (kCells + 1) + moves, so fewer spikes always win
+    constexpr int kSpikeCost = kCells + 1;
+    for (std::size_t end : milestones) {
+        const int a = s.pos, b = path[end];
+        allowed.reset();
+        for (std::size_t i = from; i <= end; ++i)
+            if (m.spike[path[i]] && !s.dead[path[i]]) allowed[path[i]] = true;
+
+        // Dijkstra over the costs; std::map keeps the order the same everywhere
+        cost.fill(-1);
+        parent.fill(-1);
+        std::map<int, std::vector<int>> open;
+        cost[a] = 0;
+        open[0].push_back(a);
+        // until nothing left in the queue is cheaper than the way to b found so far
+        while (!open.empty() && (cost[b] == -1 || open.begin()->first < cost[b])) {
+            auto first = open.begin();
+            const int c0 = first->first;
+            std::vector<int> cells = std::move(first->second);
+            open.erase(first);
+            for (int c : cells) {
+                if (cost[c] != c0) continue;  // reached cheaper since
+                const int n = m.neighbours(c, nb);
+                for (int k = 0; k < n; ++k) {
+                    const int to = nb[k];
+                    if (s.dead[to] || (m.spike[to] && !allowed[to])) continue;
+                    const int c1 = c0 + 1 + (m.spike[to] ? kSpikeCost : 0);
+                    if (cost[to] != -1 && cost[to] <= c1) continue;
+                    cost[to] = c1;
+                    parent[to] = c;
+                    open[c1].push_back(to);
+                }
+            }
+        }
+        if (cost[b] == -1) return path;  // cannot happen: the old piece is a route
+
+        std::vector<int> piece;
+        for (int c = b; c != a; c = parent[c]) piece.push_back(c);
+        for (auto it = piece.rbegin(); it != piece.rend(); ++it) {
+            if (!step(m, s, *it)) return path;
+            out.push_back(*it);
+        }
+        from = end + 1;
+    }
+    return out;
+}
+
+/** @brief Count live spike cells on a path. */
+int spikesOn(const Model& m, const std::vector<int>& path) {
+    int n = 0;
+    for (int c : path) n += m.spike[c];
+    return n;
+}
+
+/**
+ * @brief Return the path to hand out: spike-spared when enabled and still winning.
+ *
+ * @details Falls back to @p path if the rebuilt one has more spikes or no longer wins.
+ */
+std::vector<int> finish(const Model& m, const State& s, std::vector<int> path,
+                        const Options& options) {
+    if (!options.spareSpikes) return path;
+    std::vector<int> spared = spareSpikes(m, s, path);
+    if (spikesOn(m, spared) > spikesOn(m, path)) return path;
+    auto won = trimToWin(m, s, spared);
+    return won ? std::move(*won) : path;
+}
+
 Dir direction(int from, int to) {
     if (to == from - Grid::kStride) return Dir::Up;
     if (to == from + Grid::kStride) return Dir::Down;
@@ -429,7 +532,7 @@ Result compute(const Grid& grid, Coord pos, const std::vector<Coord>& reference,
     for (Coord c : reference)
         refCells.push_back(grid.inBounds(c.x, c.y) ? c.index() : -1);
     if (auto path = backToReference(m, state, refCells))
-        return winnable(Stage::Reference, state.pos, *path);
+        return winnable(Stage::Reference, state.pos, finish(m, state, std::move(*path), options));
     if (!options.useSolver) return {Verdict::Unknown, Stage::Reference, {}};
 
     const Abstraction abstraction(m);
@@ -441,7 +544,7 @@ Result compute(const Grid& grid, Coord pos, const std::vector<Coord>& reference,
         return {Verdict::Unknown, Stage::Solver, {}};
     auto trimmed = trimToWin(m, state, path);
     if (!trimmed) return {Verdict::Unknown, Stage::Solver, {}};
-    return winnable(Stage::Solver, state.pos, *trimmed);
+    return winnable(Stage::Solver, state.pos, finish(m, state, std::move(*trimmed), options));
 }
 
 const char* stageName(Stage stage) {

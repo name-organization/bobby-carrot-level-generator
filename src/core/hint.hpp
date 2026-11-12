@@ -2,7 +2,8 @@
  * @file
  * @brief Winning-route hints for ground, carrots, spikes, start and exit.
  *
- * @details Tests reachability, rejoins a remembered route, then uses SAT if needed.
+ * @details Tests reachability, rejoins a remembered route, then uses SAT if needed;
+ * a winning route is then rebuilt with as few spikes as the same carrot order allows.
  * @see docs/smt-formalization.md for the model and completeness argument.
  */
 #pragma once
@@ -28,6 +29,10 @@ struct Options {
     long long conflictBudget = 400000;  ///< Exhaustion returns Verdict::Unknown.
 
     bool useSolver = true;  ///< False stops at Stage::Reference if cheap checks are inconclusive.
+
+    /// Rebuild the route with as few spikes as the same carrot order allows. Off in the
+    /// level generator, whose solutions are part of a level (a seed keeps its level).
+    bool spareSpikes = true;
 };
 
 /** @brief Check the base tile set and require exactly one exit. */
