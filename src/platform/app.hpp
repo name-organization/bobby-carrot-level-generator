@@ -36,6 +36,10 @@ public:
     SDL_Renderer* sdlRenderer() { return renderer_; }
     gfx::Renderer& gfx() { return gfx_; }
 
+    // Changing the view also resizes the window and the logical viewport, so
+    // it has to go through the app rather than straight to the renderer.
+    void setViewMode(gfx::ViewMode m);
+
     // The web page's Back button covers the top left corner of the board:
     // the timer goes right of it, level with it (logical pixels).
     void setTimerAt(int x, int y) { gfx_.setTimerAt(x, y); }
@@ -135,6 +139,7 @@ private:
     unsigned int reportedInfoSeed_ = 0;
     int reportedInfoSize_ = 0;
     int reportedInfoDifficulty_ = 0;
+    int reportedViewPx_ = 0;  // logical width of the view, for the Back button
     Mode mode_ = Mode::Normal;
     int selected_ = 0;
     int frameTick_ = 0;

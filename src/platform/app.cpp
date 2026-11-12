@@ -135,6 +135,11 @@ void App::syncBoard() {
     applyLayout();
 }
 
+void App::setViewMode(gfx::ViewMode m) {
+    gfx_.setViewMode(m);
+    applyLayout();
+}
+
 void App::forceLevel(Mode mode, int index) {
     mode_ = mode;
     startLevel(mode, index);
@@ -341,19 +346,22 @@ void App::reportLevelInfo() {
         difficulty = static_cast<int>(game_.generatedDifficulty());
         seed = game_.seed();
     }
+    // the view's width in logical pixels, for the Back button (setHudLeft):
+    // the board's in the whole-map view, the handset viewport's in the close-up
+    const int viewPx = gfx_.logicalWidth();
     if (kind == reportedKind_ && number == reportedNumber_ && seed == reportedInfoSeed_ &&
-        size == reportedInfoSize_ && difficulty == reportedInfoDifficulty_)
+        size == reportedInfoSize_ && difficulty == reportedInfoDifficulty_ &&
+        viewPx == reportedViewPx_)
         return;
+    reportedViewPx_ = viewPx;
     reportedKind_ = kind;
     reportedNumber_ = number;
     reportedInfoSeed_ = seed;
     reportedInfoSize_ = size;
     reportedInfoDifficulty_ = difficulty;
 #ifdef __EMSCRIPTEN__
-    // the board's width in logical pixels, for the Back button (setHudLeft)
-    const int boardPx = game_.grid().w * kTileSize;
     EM_ASM({ if (Module.onLevelInfo) Module.onLevelInfo($0, $1, $2, $3, $4 >>> 0, $5); },
-           kind, number, size, difficulty, seed, boardPx);
+           kind, number, size, difficulty, seed, viewPx);
 #endif
 }
 
@@ -535,6 +543,7 @@ void App::onKey(SDL_Keycode key) {
         case SDLK_ESCAPE: case SDLK_BACKSPACE: onBack(); break;
         case SDLK_r: if (screen_ == Screen::Play) game_.restart(); break;
         case SDLK_h: if (screen_ == Screen::Play) game_.toggleHint(); break;
+        case SDLK_f: gfx_.toggleViewMode(); applyLayout(); break;
         case SDLK_m: mixer_.toggleMuted(); save_.muted = mixer_.muted(); saveProgress(save_); break;
         // the Settings page of the web page (music, sounds, mute); the level
         // is paused under it, see setPaused()
