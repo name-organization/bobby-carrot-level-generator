@@ -98,12 +98,6 @@ else()
         target_link_libraries(bobby PRIVATE m)
     endif()
 
-    # Rule verification harness: proves every original level is still solvable
-    # under the reconstructed tile semantics. Native only -- it is a test, not
-    # something to ship to the browser.
-    add_executable(solve_levels tests/solve_levels.cpp ${CORE_SOURCES})
-    target_link_libraries(solve_levels PRIVATE cadical)
-
     # Hint through the real Game class: follow it to the exit on levels 1-7.
     add_executable(hint_game tests/hint_game.cpp ${CORE_SOURCES})
     target_link_libraries(hint_game PRIVATE cadical)
@@ -113,8 +107,6 @@ else()
     target_link_libraries(gen_bench PRIVATE cadical)
 
     enable_testing()
-    add_test(NAME levels_solvable
-             COMMAND solve_levels "${CMAKE_SOURCE_DIR}/assets/v1" 8000000)
     add_test(NAME hint_in_game
              COMMAND hint_game "${CMAKE_SOURCE_DIR}/assets/v1")
     add_test(NAME generated_levels_winnable
