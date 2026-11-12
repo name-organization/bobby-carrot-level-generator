@@ -127,17 +127,42 @@ table matches `kTileChars` in `src/core/tilechar.hpp`.
 
 ### Sharing a generated level
 
-A generated level is fully given by its seed and map size: the generator uses
-its own random numbers (`src/core/rng.hpp`) and limits the solver by a count,
-not a time, so a seed gives the same level natively and in the browser.
-<kbd>E</kbd> puts both into the page address and copies it, e.g.
-`http://localhost:8080/?seed=123456&size=24`; opening that link starts the same
-level. `size` is 16, 24 or 32 and may be left out for 16. The native build
-prints `--seed=… --size=…` instead and takes the same two options on start.
-Levels made with <kbd>B</kbd> and the ones that follow a finished generated
-level get a random seed without asking.
+A generated level is fully given by its seed, map size and difficulty: the
+generator uses its own random numbers (`src/core/rng.hpp`), limits the solver by
+a count, not a time, and scores levels in integers, so a seed gives the same
+level natively and in the browser. <kbd>E</kbd> puts all three into the page
+address and copies it, e.g.
+`http://localhost:8080/?seed=123456&size=24&difficulty=hard`; opening that link
+starts the same level. `size` is 16, 24 or 32 and may be left out for 16.
+`difficulty` is `easy`, `medium` or `hard`; a link without one is a link from
+before difficulties and gives the level it always gave (the first medium level
+of the seed, not picked by its score). The native build prints
+`--seed=… --size=… --difficulty=…` instead and takes the same options on start.
+Levels made with <kbd>G</kbd> and the ones that follow a finished generated
+level keep the map size and difficulty and get a random seed without asking.
 
-<kbd>G</kbd> builds a level from rooms (`src/core/roomgen.{hpp,cpp}`, the
+### Difficulty
+
+A generated level is easy, medium or hard. `src/core/difficulty.{hpp,cpp}`
+scores a level from 0 to 100 out of three measures, each compared with what is
+typical of a map of its size (so the difficulties mean the same on 16, 24 and
+32 cells):
+
+- **cover**: moves of the winning solution the generator verified the level
+  with, per walkable cell -- how many times over Bobby walks the island;
+- **spikes**: spikes per 100 walkable cells;
+- **naive**: how often a player who always goes for the nearest carrot cuts
+  himself off with a spike (out of 20 tries); it counts twice.
+
+Below 38 is easy, 62 and up is hard, medium lies between. A difficulty first
+sets the generator's parameters (`roomgen::Params::forSize`: easy has few spike
+doors and spikes and a smaller island, hard spikes every door it can, twice the
+spikes and fewer cycles), then up to three levels are built (the first from
+the seed itself) and the first whose score lands in the difficulty's band is
+kept, or the closest of the three. The score is printed with the level in the
+browser console.
+
+The generator builds a level from rooms (`src/core/roomgen.{hpp,cpp}`, the
 Spelunky approach): the map is cut into a grid of room slots, a random path of
 rooms runs from the start to the exit, side rooms hang off it, and more doors
 between neighbouring rooms close cycles, so that most rooms open into two to
@@ -153,7 +178,7 @@ rooms it separates, and room by room (each with its walls) if that fails. The
 layout pins the doors, the cells they lead to, the start and the exit; a
 one-cell wall between two rooms may come out hedge or fence. A room WFC cannot
 fill (about 4%) gets fixed patterns (carrot fields, rows, pillars) instead. The
-model is learned from `assets/v1/level` on the first <kbd>G</kbd>.
+model is learned from `assets/v1/level` with the first generated level.
 
 Hedge and fence pieces are then picked from their neighbours by
 `src/core/autotile.{hpp,cpp}`, whose tables were read off the 50 original
@@ -167,7 +192,7 @@ seed and the time it took are printed to the browser console, and the seed gives
 the same level in the bench.
 
 The generator works on a `Canvas` of any size (`src/core/canvas.hpp`); up to
-32 × 32 it is verified and played. <kbd>B</kbd> picks 16, 24 or 32 cells a side;
+32 × 32 it is verified and played. The New level window picks 16, 24 or 32 cells a side;
 `roomgen::Params::forSize` sets the room size (4, 5, 6), the carrot weight and
 the spike target for each, with what they measured.
 

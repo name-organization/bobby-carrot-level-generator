@@ -135,11 +135,6 @@ void App::syncBoard() {
     applyLayout();
 }
 
-void App::setViewMode(gfx::ViewMode m) {
-    gfx_.setViewMode(m);
-    applyLayout();
-}
-
 void App::forceLevel(Mode mode, int index) {
     mode_ = mode;
     startLevel(mode, index);
@@ -158,8 +153,9 @@ void App::startLevel(Mode mode, int index) {
     pendingTap_ = Dir::None;
 }
 
-void App::generateLevel(unsigned int seed) {
-    if (!game_.loadProcedural(seed, generatedSize_, generatedSize_)) {  // 0 picks a random seed
+void App::generateLevel(unsigned int seed, bool rated) {
+    // 0 picks a random seed
+    if (!game_.loadProcedural(seed, generatedSize_, generatedSize_, generatedDifficulty_, rated)) {
         std::fprintf(stderr, "cannot generate a level\n");
         return;
     }
@@ -168,20 +164,40 @@ void App::generateLevel(unsigned int seed) {
     pendingTap_ = Dir::None;
 }
 
-void App::askToGenerate() {
+void App::generateLevel(unsigned int seed, int size, Difficulty difficulty) {
+    if (isGeneratedSize(size)) generatedSize_ = size;
+    generatedDifficulty_ = difficulty;
+    generateLevel(seed);
+}
+
+bool App::onGeneratedLevel() const {
+    return (screen_ == Screen::Play || screen_ == Screen::Cleared) && game_.levelIndex() < 0;
+}
+
+bool App::openNewLevelWindow() {
 #ifdef __EMSCRIPTEN__
-    const bool asked = EM_ASM_INT({
+    return EM_ASM_INT({
         if (!Module.askSeed) return 0;
-        Module.askSeed($0);
+        Module.askSeed($0, $1);
         return 1;
-    }, generatedSize_);
-    if (asked) return;
+    }, generatedSize_, static_cast<int>(generatedDifficulty_)) != 0;
+#else
+    return false;
 #endif
-    generateLevel();
+}
+
+void App::askToGenerate() {
+    if (!openNewLevelWindow()) generateLevel();
 }
 
 bool App::isGeneratedSize(int size) {
     return size == Grid::kClassic || size == Grid::kClassic + 8 || size == Grid::kMaxW;
+}
+
+void App::toggleLevelMode() {
+    if (screen_ != Screen::Select) return;
+    mode_ = mode_ == Mode::Normal ? Mode::Egg : Mode::Normal;
+    selected_ = Level::levelCount(mode_);  // the switch stays selected
 }
 
 void App::openLevelSelect() {
@@ -262,9 +278,13 @@ void App::reportLevelUrl() {
     const bool generated = onLevel && game_.levelIndex() < 0 && game_.seed() != 0;
     const unsigned int seed = generated ? game_.seed() : 0;
     const int size = generated ? game_.generatedWidth() : 0;
-    if (seed == reportedSeed_ && size == reportedSize_) return;
+    // a level from a link without a difficulty keeps a link without one
+    const int difficulty =
+        generated && game_.generatedRated() ? static_cast<int>(game_.generatedDifficulty()) : -1;
+    if (seed == reportedSeed_ && size == reportedSize_ && difficulty == reportedDifficulty_) return;
     reportedSeed_ = seed;
     reportedSize_ = size;
+    reportedDifficulty_ = difficulty;
 #ifdef __EMSCRIPTEN__
     // replaceState, not pushState: a new level is no page to go back to
     EM_ASM({
@@ -273,12 +293,67 @@ void App::reportLevelUrl() {
         if ($0 >>> 0) {
             u.searchParams.set('seed', String($0 >>> 0));
             u.searchParams.set('size', String($1));
+            if ($2 >= 0) u.searchParams.set('difficulty', ['easy', 'medium', 'hard'][$2]);
+            else u.searchParams.delete('difficulty');
         } else {
             u.searchParams.delete('seed');
             u.searchParams.delete('size');
+            u.searchParams.delete('difficulty');
         }
         if (u.href !== window.location.href) window.history.replaceState(null, "", u.href);
-    }, seed, size);
+    }, seed, size, difficulty);
+#endif
+}
+
+// The level list's carrot / egg switch under the grid and the Back button
+// over its corner are buttons of the page: it is told which levels the list
+// shows and which of the two is selected, if one is. On the ending, Back can
+// be selected too.
+void App::reportLevelList() {
+    const int mode = screen_ == Screen::Select ? (mode_ == Mode::Normal ? 1 : 2) : 0;
+    const bool switchSelected = mode != 0 && selected_ >= Level::levelCount(mode_);
+    const bool backSelected = (mode != 0 && selected_ < 0) ||
+                              (screen_ == Screen::End && endBackSelected_);
+    if (mode == reportedListMode_ && switchSelected == reportedSwitchSelected_ &&
+        backSelected == reportedBackSelected_)
+        return;
+    reportedListMode_ = mode;
+    reportedSwitchSelected_ = switchSelected;
+    reportedBackSelected_ = backSelected;
+#ifdef __EMSCRIPTEN__
+    EM_ASM({ if (Module.onLevelList) Module.onLevelList($0, !!$1, !!$2); },
+           mode, switchSelected, backSelected);
+#endif
+}
+
+// The page writes over the board what is being played: "Original level 5" or
+// "Generated level" with its size, difficulty and seed.
+void App::reportLevelInfo() {
+    const bool onLevel = screen_ == Screen::Play || screen_ == Screen::Cleared;
+    int kind = 0, number = 0, size = 0, difficulty = 0;
+    unsigned int seed = 0;
+    if (onLevel && game_.levelIndex() >= 0) {
+        kind = game_.mode() == Mode::Normal ? 1 : 2;
+        number = game_.levelIndex() + 1;
+    } else if (onLevel && game_.seed() != 0) {
+        kind = 3;
+        size = game_.generatedWidth();
+        difficulty = static_cast<int>(game_.generatedDifficulty());
+        seed = game_.seed();
+    }
+    if (kind == reportedKind_ && number == reportedNumber_ && seed == reportedInfoSeed_ &&
+        size == reportedInfoSize_ && difficulty == reportedInfoDifficulty_)
+        return;
+    reportedKind_ = kind;
+    reportedNumber_ = number;
+    reportedInfoSeed_ = seed;
+    reportedInfoSize_ = size;
+    reportedInfoDifficulty_ = difficulty;
+#ifdef __EMSCRIPTEN__
+    // the board's width in logical pixels, for the Back button (setHudLeft)
+    const int boardPx = game_.grid().w * kTileSize;
+    EM_ASM({ if (Module.onLevelInfo) Module.onLevelInfo($0, $1, $2, $3, $4 >>> 0, $5); },
+           kind, number, size, difficulty, seed, boardPx);
 #endif
 }
 
@@ -307,6 +382,7 @@ void App::advanceLevel() {
         startLevel(mode_, next);
     } else {
         screen_ = Screen::End;
+        endBackSelected_ = false;
         mixer_.stopMusic();
         mixer_.playSound("end", 0.8f);
     }
@@ -336,16 +412,32 @@ void App::onDirection(Dir d, bool pressed) {
     if (!pressed) return;
 
     if (screen_ == Screen::Select) {
+        // selected_ == count is the carrot / egg switch under the levels:
+        // Down from the bottom of the grid reaches it, Up leaves it.
+        // selected_ == -1 is the page's Back button over the top left corner:
+        // Up from the top row reaches it, Down leaves it.
         const int count = Level::levelCount(mode_);
+        if (selected_ >= count) {
+            if (d == Dir::Up) selected_ = count - 1;
+            return;
+        }
+        if (selected_ < 0) {
+            if (d == Dir::Down) selected_ = 0;
+            return;
+        }
         int next = selected_;
         switch (d) {
             case Dir::Left:  next -= 1; break;
             case Dir::Right: next += 1; break;
-            case Dir::Up:    next -= 6; break;
-            case Dir::Down:  next += 6; break;
+            case Dir::Up:    next = next - 6 >= 0 ? next - 6 : -1; break;
+            case Dir::Down:  next = next + 6 < count ? next + 6 : count; break;
             default: break;
         }
-        if (next >= 0 && next < count) selected_ = next;
+        if (next >= -1 && next <= count && !(next < 0 && d != Dir::Up)) selected_ = next;
+    } else if (screen_ == Screen::End) {
+        // Up selects the page's Back button, Down lets go of it
+        if (d == Dir::Up) endBackSelected_ = true;
+        if (d == Dir::Down) endBackSelected_ = false;
     } else if (screen_ == Screen::Title) {
         if (d == Dir::Left || d == Dir::Right) {
             mode_ = mode_ == Mode::Normal ? Mode::Egg : Mode::Normal;
@@ -359,6 +451,14 @@ void App::onConfirm() {
             openLevelSelect();
             break;
         case Screen::Select: {
+            if (selected_ < 0) {  // the Back button
+                onBack();
+                break;
+            }
+            if (selected_ >= Level::levelCount(mode_)) {
+                toggleLevelMode();
+                break;
+            }
             const int unlocked = mode_ == Mode::Normal ? save_.unlockedNormal : save_.unlockedEgg;
             if (selected_ < unlocked) startLevel(mode_, selected_);
             break;
@@ -368,18 +468,28 @@ void App::onConfirm() {
             advanceLevel();
             break;
         case Screen::End:
-            screen_ = Screen::Title;
+            // Back (selected with Up) and "continue" both lead to the title
+            if (endBackSelected_) onBack();
+            else screen_ = Screen::Title;
             break;
         case Screen::Play:
             break;
     }
 }
 
+// Esc and the web page's Back button.
 void App::onBack() {
     switch (screen_) {
         case Screen::Play:
         case Screen::Cleared:
-            screen_ = Screen::Select;
+            // a generated level goes back to the New level window, over the
+            // level (natively, without the window, to the main menu); a
+            // shipped one to the level list
+            if (game_.levelIndex() >= 0) {
+                screen_ = Screen::Select;
+            } else if (!openNewLevelWindow()) {
+                goToMainMenu();
+            }
             break;
         case Screen::Select:
             screen_ = Screen::Title;
@@ -425,7 +535,6 @@ void App::onKey(SDL_Keycode key) {
         case SDLK_ESCAPE: case SDLK_BACKSPACE: onBack(); break;
         case SDLK_r: if (screen_ == Screen::Play) game_.restart(); break;
         case SDLK_h: if (screen_ == Screen::Play) game_.toggleHint(); break;
-        case SDLK_f: gfx_.toggleViewMode(); applyLayout(); break;
         case SDLK_m: mixer_.toggleMuted(); save_.muted = mixer_.muted(); saveProgress(save_); break;
         // the Settings page of the web page (music, sounds, mute); the level
         // is paused under it, see setPaused()
@@ -435,7 +544,7 @@ void App::onKey(SDL_Keycode key) {
 #endif
             break;
         case SDLK_n:
-            if (screen_ == Screen::Play &&
+            if (screen_ == Screen::Play && game_.levelIndex() >= 0 &&
                 game_.levelIndex() + 1 < Level::levelCount(mode_))
                 startLevel(mode_, game_.levelIndex() + 1);
             break;
@@ -443,24 +552,13 @@ void App::onKey(SDL_Keycode key) {
             if (screen_ == Screen::Play && game_.levelIndex() > 0)
                 startLevel(mode_, game_.levelIndex() - 1);
             break;
-        case SDLK_t:
-            // A generated level has no carrot/egg counterpart to switch to.
-            if ((screen_ == Screen::Play || screen_ == Screen::Cleared) &&
-                game_.levelIndex() < 0)
-                break;
-            mode_ = mode_ == Mode::Normal ? Mode::Egg : Mode::Normal;
-            selected_ = 0;
-            if (screen_ == Screen::Play) startLevel(mode_, 0);
-            break;
-        case SDLK_g: askToGenerate(); break;
-        case SDLK_b:
-            // the size of generated maps: 16, 24, 32 cells a side, then back
-            generatedSize_ = generatedSize_ >= Grid::kMaxW ? Grid::kClassic : generatedSize_ + 8;
-            std::printf("[gen] map size %dx%d\n", generatedSize_, generatedSize_);
-            if (screen_ == Screen::Play && game_.levelIndex() < 0) generateLevel();
+        case SDLK_g:
+            // in a generated level only: another one of the same size and
+            // difficulty, with a random seed
+            if (onGeneratedLevel()) generateLevel();
             break;
         case SDLK_q: goToMainMenu(); break;
-        // export the generated level as a link: its seed and map size
+        // export the generated level as a link: its seed, map size and difficulty
         case SDLK_e: {
             if (screen_ != Screen::Play || game_.levelIndex() >= 0 || game_.seed() == 0) break;
             reportLevelUrl();  // the address already names this level
@@ -478,7 +576,11 @@ void App::onKey(SDL_Keycode key) {
                 }
             });
 #else
-            std::printf("share: --seed=%u --size=%d\n", game_.seed(), game_.generatedWidth());
+            if (game_.generatedRated())
+                std::printf("share: --seed=%u --size=%d --difficulty=%s\n", game_.seed(),
+                            game_.generatedWidth(), difficulty::name(game_.generatedDifficulty()));
+            else
+                std::printf("share: --seed=%u --size=%d\n", game_.seed(), game_.generatedWidth());
 #endif
             break;
         }
@@ -679,13 +781,14 @@ void App::render() {
     gfx_.present();
 }
 
-bool App::startFromSeed(unsigned int seed, int size) {
+bool App::startFromSeed(unsigned int seed, int size, Difficulty difficulty, bool rated) {
     if (seed == 0 || !isGeneratedSize(size)) {
         std::fprintf(stderr, "[bobby] bad level link: seed %u, size %d\n", seed, size);
         return false;
     }
     generatedSize_ = size;
-    generateLevel(seed);
+    generatedDifficulty_ = rated ? difficulty : Difficulty::Medium;
+    generateLevel(seed, rated);
     return screen_ == Screen::Play;
 }
 
@@ -713,6 +816,8 @@ void App::frame() {
     reportScreen();
     reportAudio();
     reportLevelUrl();
+    reportLevelInfo();
+    reportLevelList();
 }
 
 }  // namespace bc::platform

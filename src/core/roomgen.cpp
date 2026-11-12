@@ -878,7 +878,31 @@ Result generate(const Params& params, std::uint32_t seed) {
     return last;
 }
 
-Params Params::forSize(int width, int height) {
+Result generateRated(const Params& params, std::uint32_t seed, Difficulty difficulty,
+                     int tries) {
+    Result best;
+    int bestOff = -1;  // how far the best score is from the band, -1 before the first
+    int built = 0;
+    for (int k = 0; k < std::max(1, tries); ++k) {
+        ++built;
+        Result res = generate(params, difficulty::trySeed(seed, k));
+        Level level;
+        int off = 1000;  // a level the engine cannot play or the solver did not win
+        if (res.verified && res.canvas.toLevel(level)) {
+            res.rating = difficulty::rate(level, res.solution, res.seed);
+            off = difficulty::distanceToBand(res.rating.score, difficulty);
+        }
+        if (bestOff < 0 || off < bestOff) {
+            best = std::move(res);
+            bestOff = off;
+        }
+        if (bestOff == 0) break;
+    }
+    best.tries = built;
+    return best;
+}
+
+Params Params::forSize(int width, int height, Difficulty difficulty) {
     Params p;
     p.width = width;
     p.height = height;
@@ -895,6 +919,21 @@ Params Params::forSize(int width, int height) {
         p.roomSize = 6;
         p.wfcCarrotPercent = 300;
         p.spikeTarget = 20;
+    }
+    switch (difficulty) {
+        case Difficulty::Easy:
+            p.fill = 0.55;
+            p.spikeDoorChance = 0.1;
+            p.spikeTarget = p.spikeTarget * 2 / 5;
+            break;
+        case Difficulty::Medium:
+            break;
+        case Difficulty::Hard:
+            p.fill = 0.85;
+            p.spikeDoorChance = 1.0;
+            p.loopChance = 0.3;
+            p.spikeTarget *= 2;
+            break;
     }
     return p;
 }

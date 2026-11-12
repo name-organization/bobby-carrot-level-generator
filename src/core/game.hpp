@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 
+#include "difficulty.hpp"
 #include "hint.hpp"
 #include "level.hpp"
 #include "player.hpp"
@@ -19,10 +20,13 @@ public:
 
     bool load(Mode mode, int index);
     // A new room-based level (roomgen.hpp) of the given size, up to
-    // Grid::kMaxW x Grid::kMaxH; seed 0 picks a random one. The same seed and
-    // size always give the same level, which is how levels are shared.
+    // Grid::kMaxW x Grid::kMaxH, and difficulty; seed 0 picks a random one.
+    // The same seed, size and difficulty always give the same level, which is
+    // how levels are shared. `rated` false takes the first level Medium makes,
+    // without the difficulty score: what links from before difficulties name.
     bool loadProcedural(unsigned int seed = 0, int width = Grid::kClassic,
-                        int height = Grid::kClassic);
+                        int height = Grid::kClassic, Difficulty difficulty = Difficulty::Medium,
+                        bool rated = true);
     // Plays a level that is not one of the shipped files: a generated or an
     // imported one. `reference` is a winning solution as moves from the start,
     // if known. Always succeeds.
@@ -49,6 +53,11 @@ public:
     unsigned int seed() const       { return seed_; }
     int generatedWidth() const      { return genWidth_; }
     int generatedHeight() const     { return genHeight_; }
+    // Difficulty asked for, whether the level was picked by its score (false
+    // for links from before difficulties), and the score it got.
+    Difficulty generatedDifficulty() const { return genDifficulty_; }
+    bool generatedRated() const     { return genRated_; }
+    const difficulty::Rating& generatedRating() const { return genRating_; }
     const Progress& progress() const{ return progress_; }
 
     // True once every carrot (or every patch of grass) has been taken, which
@@ -101,7 +110,8 @@ private:
     // path, against 400000 for a hint asked with H.
     static constexpr long long kRerouteConflicts = 50000;
 
-    void rememberSeed(unsigned int seed, int width, int height);
+    void rememberSeed(unsigned int seed, int width, int height,
+                      Difficulty difficulty = Difficulty::Medium, bool rated = true);
     void answerHint(bool rejoinOnly, bool tookCarrot = false, int block = -1);
     hint::Result routeAroundCarrots(Coord pos, int block) const;
     void findCarrotBlocks();
@@ -123,6 +133,9 @@ private:
     unsigned int seed_ = 0;
     int genWidth_ = 0;
     int genHeight_ = 0;
+    Difficulty genDifficulty_ = Difficulty::Medium;
+    bool genRated_ = true;
+    difficulty::Rating genRating_;
     int elapsedTicks_ = 0;
     int moveCount_ = 0;
     unsigned lastEvents_ = ev::None;

@@ -20,6 +20,7 @@ set(CORE_SOURCES
     src/core/wfc.cpp
     src/core/sat.cpp
     src/core/hint.cpp
+    src/core/difficulty.cpp
 )
 
 # CaDiCaL SAT solver, used by the hint (src/core/sat.cpp). Built from its
