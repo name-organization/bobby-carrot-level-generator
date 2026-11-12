@@ -1,4 +1,4 @@
-# Bobby Carrot Level Generator
+# Генератор уровней игры "Bobby Carrot"
 
 > [!NOTE]  
 > Игра доступна по адресу https://name-organization.github.io/bobby-carrot-level-generator/
@@ -54,8 +54,6 @@ docker compose up
 9. Нажмите <kbd>Q</kbd> для выхода в главное меню.
 10. **Settings** в главном меню позволяют настраивать громкость звуков и музыки.
 
-Фоновая музыка -- оригинальная тема из игры.
-
 На стартовой странице, в разделах «Настройки» и «Новый уровень» кнопки выбираются с помощью <kbd>↑</kbd> <kbd>↓</kbd> или наведения указателя мыши и подтверждаются клавишей <kbd>Enter</kbd> или ЛКМ; <kbd>Esc</kbd> возвращает назад. Доступные клавиши для текущей страницы перечислены под полем игры; их можно нажимать на клавиатуре или с помощью мыши. Все клавиши:
 
 | Клавиша | Действие |
@@ -72,3 +70,9 @@ docker compose up
 | <kbd>F</kbd> | приблизить / отдалить |
 | <kbd>M</kbd> | включить / выключить звук |
 | <kbd>V</kbd> | открыть настройки звука (приостанавливает уровень) |
+
+## Ссылки
+
+[Видео-демонстрация](https://drive.google.com/file/d/1bQyaQ_5b29jsd_4DrW3wJEEztMUBMpbP/view?usp=sharing)
+
+[Презентация](https://drive.google.com/drive/folders/1NMIIdEQGv-ZWFdfvvzoycJjHpR4ScH5w?usp=drive_link)
