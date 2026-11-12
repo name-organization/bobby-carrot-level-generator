@@ -17,10 +17,27 @@ struct Anchor {
 struct Anchors {
     Anchor cover, spikes, naive;
 };
-constexpr Anchors kSmall{{31, 101}, {514, 1114}, {0, 80}};    // 16 x 16
-constexpr Anchors kMiddle{{45, 105}, {486, 986}, {20, 100}};  // 24 x 24
-constexpr Anchors kLarge{{63, 113}, {415, 655}, {35, 115}};   // 32 x 32
-constexpr int kCoverWeight = 1, kSpikesWeight = 1, kNaiveWeight = 2;
+// naive is in units of its square root (isqrt(permille x 1000), 0..1000);
+// its easy anchor is 0, since most medium levels leave little, and its hard
+// one is set so that medium levels score 50 on average (100 per size).
+constexpr Anchors kSmall{{31, 101}, {514, 1114}, {0, 330}};   // 16 x 16
+constexpr Anchors kMiddle{{45, 105}, {486, 986}, {0, 480}};   // 24 x 24
+constexpr Anchors kLarge{{63, 113}, {415, 655}, {0, 830}};    // 32 x 32
+constexpr int kCoverWeight = 1, kSpikesWeight = 1, kNaiveWeight = 1;
+
+// Integer square root: floor(sqrt(v)) for v >= 0, the same everywhere.
+int isqrt(long long v) {
+    long long r = 0;
+    for (long long bit = 1LL << 40; bit; bit >>= 2) {
+        if (v >= r + bit) {
+            v -= r + bit;
+            r = (r >> 1) + bit;
+        } else {
+            r >>= 1;
+        }
+    }
+    return static_cast<int>(r);
+}
 
 // The same size classes as roomgen::Params::forSize.
 const Anchors& anchorsFor(int width, int height) {
@@ -62,17 +79,25 @@ Difficulty band(int score) {
     return Difficulty::Easy;
 }
 
+int bandLow(Difficulty d) {
+    return d == Difficulty::Easy ? 0 : (d == Difficulty::Medium ? kMediumFrom : kHardFrom);
+}
+
+int bandHigh(Difficulty d) {
+    return d == Difficulty::Easy ? kMediumFrom - 1 : (d == Difficulty::Medium ? kHardFrom - 1 : 100);
+}
+
 int distanceToBand(int score, Difficulty d) {
-    const int lo = d == Difficulty::Easy ? 0 : (d == Difficulty::Medium ? kMediumFrom : kHardFrom);
-    const int hi = d == Difficulty::Easy ? kMediumFrom - 1
-                                         : (d == Difficulty::Medium ? kHardFrom - 1 : 100);
+    const int lo = bandLow(d), hi = bandHigh(d);
     return score < lo ? lo - score : (score > hi ? score - hi : 0);
 }
 
-bool naiveWins(const Level& level, Rng& rng) {
+int naiveLeft(const Level& level, Rng& rng) {
     Grid g = level.grid;
     Coord pos = level.start;
     int carrots = level.carrotTotal;
+    // the carrots and the exit it can no longer reach, in permille of all
+    auto left = [&] { return (carrots + 1) * 1000 / (level.carrotTotal + 1); };
     auto open = [&](Coord c) {
         return g.inBounds(c.x, c.y) && g.at(c) >= T_FIRST_WALKABLE && g.at(c) != T_HOLE;
     };
@@ -81,7 +106,7 @@ bool naiveWins(const Level& level, Rng& rng) {
     std::vector<Coord> first(Grid::kCells);
     std::vector<Coord> queue;
     for (int step = 0; step < 4 * g.w * g.h; ++step) {
-        if (carrots == 0 && pos == level.exit) return true;
+        if (carrots == 0 && pos == level.exit) return 0;
         rng.shuffle(dirs);
         // breadth-first from Bobby: the first step towards each cell
         std::fill(dist.begin(), dist.end(), -1);
@@ -103,9 +128,9 @@ bool naiveWins(const Level& level, Rng& rng) {
                 }
             }
         }
-        if (target.x < 0) return false;  // cut off
+        if (target.x < 0) return left();  // cut off
         Coord next = first[target.index()];
-        if (rng.chance(0.2)) {
+        if (rng.range(0, 99) < kNaiveRandomPercent) {
             for (Dir d : dirs) {
                 const Coord n{pos.x + dirDX(d), pos.y + dirDY(d)};
                 if (open(n)) {
@@ -121,14 +146,14 @@ bool naiveWins(const Level& level, Rng& rng) {
             --carrots;
         }
     }
-    return false;
+    return left();  // wandered too long
 }
 
-int naiveLossPercent(const Level& level, std::uint32_t seed) {
+int naiveLeftPermille(const Level& level, std::uint32_t seed) {
     Rng rng(seed * 7919u + 1u);
-    int lost = 0;
-    for (int i = 0; i < kNaiveTries; ++i) lost += !naiveWins(level, rng);
-    return lost * 100 / kNaiveTries;
+    long long sum = 0;
+    for (int i = 0; i < kNaiveTries; ++i) sum += naiveLeft(level, rng);
+    return static_cast<int>(sum / kNaiveTries);
 }
 
 Rating rate(const Level& level, const std::vector<Dir>& moves, std::uint32_t seed) {
@@ -146,12 +171,12 @@ Rating rate(const Level& level, const std::vector<Dir>& moves, std::uint32_t see
     if (area == 0) return r;
     r.cover = static_cast<int>(100LL * static_cast<long long>(moves.size()) / area);
     r.spikes = spikes * 10000 / area;
-    r.naive = naiveLossPercent(level, seed);
+    r.naive = naiveLeftPermille(level, seed);
 
     const Anchors& a = anchorsFor(g.w, g.h);
     const long long sum = static_cast<long long>(scale(r.cover, a.cover)) * kCoverWeight +
                           static_cast<long long>(scale(r.spikes, a.spikes)) * kSpikesWeight +
-                          static_cast<long long>(scale(r.naive, a.naive)) * kNaiveWeight;
+                          static_cast<long long>(scale(isqrt(1000LL * r.naive), a.naive)) * kNaiveWeight;
     const int weights = kCoverWeight + kSpikesWeight + kNaiveWeight;
     // 0..1000 per measure, so the mean over 10 is 0..100, rounded to nearest
     r.score = static_cast<int>((sum + 5LL * weights) / (10LL * weights));
