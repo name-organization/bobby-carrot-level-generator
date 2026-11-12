@@ -220,11 +220,13 @@ bool stillWinnable(const Grid& g, Coord start, std::vector<Coord>& reference, in
                    hint::Result& out) {
     hint::Options cheap;
     cheap.useSolver = false;  // flood fill and the reference only
+    cheap.spareSpikes = false;  // the generator's solutions are part of the level
     hint::Result h = hint::compute(g, start, reference, cheap);
     if (h.verdict == hint::Verdict::Unknown && reroutes > 0) {
         --reroutes;
         hint::Options reroute;
         reroute.conflictBudget = kRerouteConflicts;
+        reroute.spareSpikes = false;
         h = hint::compute(g, start, reference, reroute);
     }
     if (h.verdict != hint::Verdict::Winnable) return false;
@@ -707,6 +709,7 @@ hint::Result placeSpikes(Level& level, const std::vector<Door>& doors, Rng& rng,
 
     hint::Options options;
     options.conflictBudget = kGenerationConflicts;
+    options.spareSpikes = false;
     hint::Result best = hint::compute(g, level.start, {}, options);
     dropped = 0;
     if (best.verdict != hint::Verdict::Winnable) return best;
