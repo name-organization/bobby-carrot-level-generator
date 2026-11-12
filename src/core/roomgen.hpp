@@ -141,25 +141,23 @@ struct Params {
     //
     // What comes out with generateRated() -- 3 tries, then the tuning into
     // the band -- 200 levels each (seeds 1-200; "in band" is the share of
-    // levels whose score lands in the band asked for, without the tuning in
-    // brackets; "tuned" the share the tuning changed; native ms on one core,
-    // 50 levels, the tuning included):
+    // levels whose score lands in the band asked for, "tuned" the share the
+    // tuning changed). Native time on one core, 50 levels: 24x24 medium
+    // 261 ms, 32x32 medium 218 ms, 32x32 hard 306 ms, the rest less.
     //
-    //   map    difficulty  score       in band     tries  tuned  spikes  naive loses  native
-    //   16x16  easy        15 (0-37)   100% (100)  1.1     0%     2.0     4%           24 ms
-    //   16x16  medium      47 (33-70)   96%  (60)  2.4    40%     6.1    33%           63 ms
-    //   16x16  hard        83 (55-100)  98%  (96)  1.4     3%    10.1    78%           37 ms
-    //   24x24  easy        10 (0-37)   100% (100)  1.1     0%     3.7     8%           75 ms
-    //   24x24  medium      49 (25-69)   94%  (56)  2.4    43%    10.9    59%          302 ms
-    //   24x24  hard        80 (41-100)  99%  (97)  1.4     2%    17.3    90%          139 ms
-    //   32x32  easy        11 (0-37)   100% (100)  1.3     0%     7.8    22%          105 ms
-    //   32x32  medium      52 (25-66)   99%  (76)  2.0    25%    18.5    78%          298 ms
-    //   32x32  hard        73 (62-91)  100%  (98)  1.2     2%    31.3    98%          163 ms
+    //   map    difficulty  score         in band  tries  tuned  spikes
+    //   16x16  easy        19 (0-37)     100.0%   1.2     2%    1.9
+    //   16x16  medium      50 (38-61)    100.0%   2.0    20%    5.9
+    //   16x16  hard        81 (61-100)    99.5%   1.2     0%    9.7
+    //   24x24  easy        14 (0-36)     100.0%   1.2     0%    3.8
+    //   24x24  medium      50 (38-61)    100.0%   1.9    19%   11.1
+    //   24x24  hard        78 (60-100)    99.5%   1.4     4%   18.5
+    //   32x32  easy        15 (0-37)     100.0%   1.1     0%    7.8
+    //   32x32  medium      50 (38-61)    100.0%   1.7    14%   19.1
+    //   32x32  hard        72 (56-96)     96.5%   1.8    14%   33.2
     //
-    // Medium levels spread the widest, so Medium needs the most tries and the
-    // most tuning: 1.9-3.4 spikes added or taken out per tuned level. The
-    // tuning costs likeness (tests/gen_bench.cpp, "patterns") at most a point,
-    // and the time it takes is within the noise of the measurement.
+    // Before the naive measure was made smooth (difficulty.hpp) and before
+    // the tuning, 56-76% of medium levels landed in their band.
     static Params forSize(int width, int height, Difficulty difficulty = Difficulty::Medium);
 };
 

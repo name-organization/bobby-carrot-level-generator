@@ -69,14 +69,14 @@ bool Game::loadProcedural(unsigned int seed, int width, int height, Difficulty d
         return true;
     }
     std::printf("[gen] seed %u, %dx%d, %s: %zu rooms (%d by WFC), %s walls, %s after %d attempt(s), "
-                "%zu moves, score %d (%s; cover %d, spikes %d.%02d per 100 cells, naive loses "
-                "%d%%), %d of %d tries, tuned %+d spikes, %.1f ms\n",
+                "%zu moves, score %d (%s; cover %d, spikes %d.%02d per 100 cells, naive leaves "
+                "%d.%d%%), %d of %d tries, tuned %+d spikes, %.1f ms\n",
                 seed, width, height, rated ? difficulty::name(difficulty) : "medium, unrated",
                 gen.rooms.size(), gen.wfcRooms, roomgen::wallsName(gen.walls),
                 gen.verified ? "verified" : "NOT verified", gen.attempts, gen.solution.size(),
                 gen.rating.score, difficulty::name(difficulty::band(gen.rating.score)),
                 gen.rating.cover, gen.rating.spikes / 100, gen.rating.spikes % 100,
-                gen.rating.naive, gen.tries, rated ? difficulty::kTries : 1, gen.tuned, ms);
+                gen.rating.naive / 10, gen.rating.naive % 10, gen.tries, rated ? difficulty::kTries : 1, gen.tuned, ms);
     loadLevel(next, gen.solution);
     rememberSeed(seed, width, height, difficulty, rated);
     genRating_ = gen.rating;
