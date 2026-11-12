@@ -62,10 +62,16 @@ Difficulty band(int score) {
     return Difficulty::Easy;
 }
 
+int bandLow(Difficulty d) {
+    return d == Difficulty::Easy ? 0 : (d == Difficulty::Medium ? kMediumFrom : kHardFrom);
+}
+
+int bandHigh(Difficulty d) {
+    return d == Difficulty::Easy ? kMediumFrom - 1 : (d == Difficulty::Medium ? kHardFrom - 1 : 100);
+}
+
 int distanceToBand(int score, Difficulty d) {
-    const int lo = d == Difficulty::Easy ? 0 : (d == Difficulty::Medium ? kMediumFrom : kHardFrom);
-    const int hi = d == Difficulty::Easy ? kMediumFrom - 1
-                                         : (d == Difficulty::Medium ? kHardFrom - 1 : 100);
+    const int lo = bandLow(d), hi = bandHigh(d);
     return score < lo ? lo - score : (score > hi ? score - hi : 0);
 }
 

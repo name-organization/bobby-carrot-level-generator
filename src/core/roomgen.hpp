@@ -139,24 +139,27 @@ struct Params {
     //   medium     0.75  0.5          6 / 12 / 20     0.8
     //   hard       0.85  1.0          2x medium       0.3
     //
-    // What comes out with generateRated() and 3 tries, 200 levels each
-    // (seeds 1-200; "in band" is the share of levels
-    // whose score lands in the band asked for, the others are the closest of
-    // their 3 tries; native ms on one core, 50 levels):
+    // What comes out with generateRated() -- 3 tries, then the tuning into
+    // the band -- 200 levels each (seeds 1-200; "in band" is the share of
+    // levels whose score lands in the band asked for, without the tuning in
+    // brackets; "tuned" the share the tuning changed; native ms on one core,
+    // 50 levels, the tuning included):
     //
-    //   map    difficulty  score       in band  tries  spikes  naive loses  native
-    //   16x16  easy        16 (0-37)   100%     1.1     2.0     4%           23 ms
-    //   16x16  medium      48 (19-76)   60%     2.4     6.0    36%           60 ms
-    //   16x16  hard        82 (39-100)  97%     1.4     9.9    78%           28 ms
-    //   24x24  easy        10 (0-44)    99%     1.1     3.8     9%           85 ms
-    //   24x24  medium      50 (12-88)   56%     2.4    10.7    61%          251 ms
-    //   24x24  hard        80 (41-100)  97%     1.4    17.2    90%          125 ms
-    //   32x32  easy        11 (0-37)   100%     1.3     7.8    22%          108 ms
-    //   32x32  medium      51 (21-73)   76%     2.0    18.5    78%          282 ms
-    //   32x32  hard        73 (55-91)   99%     1.2    31.2    98%          214 ms
+    //   map    difficulty  score       in band     tries  tuned  spikes  naive loses  native
+    //   16x16  easy        15 (0-37)   100% (100)  1.1     0%     2.0     4%           24 ms
+    //   16x16  medium      47 (33-70)   96%  (60)  2.4    40%     6.1    33%           63 ms
+    //   16x16  hard        83 (55-100)  98%  (96)  1.4     3%    10.1    78%           37 ms
+    //   24x24  easy        10 (0-37)   100% (100)  1.1     0%     3.7     8%           75 ms
+    //   24x24  medium      49 (25-69)   94%  (56)  2.4    43%    10.9    59%          302 ms
+    //   24x24  hard        80 (41-100)  99%  (97)  1.4     2%    17.3    90%          139 ms
+    //   32x32  easy        11 (0-37)   100% (100)  1.3     0%     7.8    22%          105 ms
+    //   32x32  medium      52 (25-66)   99%  (76)  2.0    25%    18.5    78%          298 ms
+    //   32x32  hard        73 (62-91)  100%  (98)  1.2     2%    31.3    98%          163 ms
     //
-    // Medium levels spread the widest, so Medium needs the most tries; with
-    // 5 tries 74-91% land in the band, for 30% more time.
+    // Medium levels spread the widest, so Medium needs the most tries and the
+    // most tuning: 1.9-3.4 spikes added or taken out per tuned level. The
+    // tuning costs likeness (tests/gen_bench.cpp, "patterns") at most a point,
+    // and the time it takes is within the noise of the measurement.
     static Params forSize(int width, int height, Difficulty difficulty = Difficulty::Medium);
 };
 
@@ -192,10 +195,11 @@ struct Result {
     int wfcRooms = 0;       // rooms filled by WFC
     int fallbackRooms = 0;  // rooms filled by the fixed patterns
     bool spikesRepaired = false;  // spikes had to be thinned out to win
-    // Set by generateRated(): the score of this level and how many levels
-    // were built to find it.
+    // Set by generateRated(): the score of this level, how many levels were
+    // built to find it, and the spikes the tuning added (+) or took out (-).
     difficulty::Rating rating;
     int tries = 1;
+    int tuned = 0;
 };
 
 // Same seed and params give the same level on every platform.
@@ -204,10 +208,15 @@ Result generate(const Params& params, std::uint32_t seed);
 // A level of the given difficulty (made with Params::forSize(..., difficulty)).
 // Builds up to `tries` levels, try k from difficulty::trySeed(seed, k), and
 // returns the first whose score falls into the difficulty's band, or the one
-// closest to it. With `tries` 1 the first level is taken as it is, which is
-// what generate() gives.
+// closest to it. If none falls into the band and `tune` is set, that closest
+// one is then moved into the band in place: spikes are added below the band
+// and taken out above it, one at a time, each added one kept only if the
+// solver still wins, until the score lands in the band or a fixed number of
+// steps runs out (roomgen.cpp, "tuning"). A level that is in the band from the
+// start is never touched. With `tries` 1 and `tune` false the first level is
+// taken as it is, which is what generate() gives.
 Result generateRated(const Params& params, std::uint32_t seed, Difficulty difficulty,
-                     int tries = difficulty::kTries);
+                     int tries = difficulty::kTries, bool tune = true);
 
 const char* wallsName(Walls walls);
 bool parseWalls(std::string_view text, Walls& out);

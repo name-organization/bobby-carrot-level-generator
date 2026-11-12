@@ -58,8 +58,11 @@ struct Rating {
 const char* name(Difficulty d);
 bool parse(std::string_view text, Difficulty& out);
 
-// The band a score falls into, and how far a score is from a band (0 inside).
+// The band a score falls into, the lowest and highest score of a band, and how
+// far a score is from a band (0 inside).
 Difficulty band(int score);
+int bandLow(Difficulty d);
+int bandHigh(Difficulty d);
 int distanceToBand(int score, Difficulty d);
 
 // Walks to the nearest carrot left (to the exit once there are none), never
