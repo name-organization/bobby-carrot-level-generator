@@ -1,61 +1,79 @@
 # Bobby Carrot Level Generator
 
-Here is C++ / WebAssembly implementation of Bobby Carrot game.
+> [!NOTE]  
+> Игра доступна по адресу https://name-organization.github.io/bobby-carrot-level-generator/
 
-Dependencies: SDL2 library, game assets. `make run` installs them locally.
+Проект представляет из себя кросс-платформенную реализацию игры Bobby Carrot с дополнительным функционалом:
+- генерация уровней различной сложности и размеров
+- навигация по уровням, основанная на SAT-решателе
+- экспорт/импорт сгенерированных уровней
+- улучшенный пользовательский интерфейс
 
-To build and run Docker container with game:
+Программный стек:
+- Игра написана на C++, компилируется в WASM (WebAssembly) с помощью `Emscripten`.
+- Библиотеки: `SDL2` (графика), `CaDiCaL` (SAT-решатель)
+- Для сборки используется `Docker`
+
+## Сборка
+
+Проверено на WSL2, Ubuntu 24.04, Fedora, Mac OS.
+Для сборки проекта нужен `Docker`, `Docker Compose`, `make`.
+
+Чтобы собрать и запустить проект:
 ```bash
 $ make run
 ```
-This downloads assets (images, sound, etc.) and SDL2 library. Then Docker builds an image and runs it.
-Game available at [http://localhost:8080](http://localhost:8080)
+Эта команда скачивает зависимости: SDL2, игровые ассеты (текстуры, звуки).
 
-## How to play
+В случае проблем с командой `make run` (ненулевой ход выхода со всякой ошибкой) стоит попробовать собрать вручную:
+```bash
+# Сборка
+wget -O docker/sdl-release-2.32.10.zip https://github.com/libsdl-org/SDL/archive/release-2.32.10.zip
+tools/fetch_assets.sh
+docker compose build bobby
+# Запуск игры в контейнере
+docker compose up
+```
 
-1. Open [http://localhost:8080](http://localhost:8080).
-2. Choose a level:
-  - **Generate level** makes a new level: pick **Random seed**, or
-    **Enter seed** and type one (1 … 4294967295) to get that seed's level, or
-  - **Select level** opens the list: click a level number. Levels unlock one
-    by one, and progress is saved in the browser.
-3. Collect every carrot (in egg levels, walk over every patch of grass). The
-   counter in the top right shows how many are left.
-4. Move with the arrow keys; on a phone, swipe.
-5. Stuck? Press <kbd>H</kbd> to see the path to the exit.
-6. Board turned red? The level can't be finished any more: press <kbd>R</kbd>
-   to restart. If Bobby falls into a hole, the level restarts by itself.
-7. Walk onto the exit when it opens.
-8. The next level starts by itself.
-9. Press <kbd>Q</kbd> to go back to the start page.
-10. **Settings** on the start page, or <kbd>V</kbd> anywhere, sets the music
-    and sound volume and mutes the game. Opened over a level, it pauses the
-    level, which goes on where it was when Settings closes. The settings are
-    saved in the browser with the progress.
+По умолчанию игра запускается на порту `8080`, можно изменить в `docker-compose.yaml`.
 
-The music is the original game's theme; it loops behind every screen but the
-ending.
+## Как играть
 
-On the start page, Settings and New level the buttons are picked with
-<kbd>↑</kbd> <kbd>↓</kbd> or the mouse and pressed with <kbd>Enter</kbd> or a
-click; <kbd>Esc</kbd> goes back. The keys for the current screen or page are
-listed under the game; each of them can also be clicked. All keys:
+1. Откройте https://name-organization.github.io/bobby-carrot-level-generator/ (`localhost:8080`, если собираете вручную).
+2. Выберите уровень:
+  - **Generate level** создает новый уровень: нажмите на **Random seed**, или
+    **Enter seed** и введите значение сида (1 … 4294967295), чтобы получить уровень, соответствующий этому сиду, или
+  - **Select level**, который открывает меню с выбором оригинальных уровней игры. Уровени открываются один за другим, 
+  прогресс сохраняется в браузере (local storage).
+3. Соберите все морковки (в уровнях с яйцами нужно пройти все клетки с травой). Счетчик в правом верхнем углу показывает, сколько морковок осталось.
+4. Двигайтесь с помощью стрелочек; на телефоне стрелочки на экране.
+5. Застряли? Нажмите на клавишу `H` (hint), чтобы увидеть путь до финиша.
+6. Экран покраснел? Уровень не может быть пройден до конца: нажмите `R`
+   для начала заново.
+7. После сбора всех морковок, доберитесь до мигающего финиша.
+8. Следующий уровень стартует автоматически.
+9. Нажмите `Q` для выхода в главное меню.
+10. **Settings** в главном меню позволяют настраивать громкость звуков и музыки.
 
-| Key | Action |
+Фоновая музыка -- оригинальная тема из игры.
+
+На стартовой странице, в разделах «Настройки» и «Новый уровень» кнопки выбираются с помощью <kbd>↑</kbd> <kbd>↓</kbd> или мыши и нажимаются клавишей <kbd>Enter</kbd> или щелчком; <kbd>Esc</kbd> возвращает назад. Клавиши для текущего экрана или страницы перечислены под игрой; каждую из них также можно нажать. Все клавиши:
+
+| Клавиша | Действие |
 |---|---|
-| <kbd>↑</kbd> <kbd>↓</kbd> <kbd>←</kbd> <kbd>→</kbd> | move / choose; in Settings <kbd>←</kbd> <kbd>→</kbd> set the selected volume |
-| <kbd>Enter</kbd> | confirm, start the selected level |
-| <kbd>H</kbd> | show or hide the hint |
-| <kbd>R</kbd> | restart the level |
-| <kbd>G</kbd> | generate a new level: random seed or a given one |
-| <kbd>B</kbd> | size of generated maps: 16, 24 or 32 cells a side (generates one in a generated level) |
-| <kbd>T</kbd> | carrot / egg levels (not in a generated level) |
-| <kbd>E</kbd> | copy a link to the generated level (its seed and map size) |
-| <kbd>Esc</kbd> | back: from a level to the level list, from the list to the main menu; closes Settings (back to the level) and New level |
-| <kbd>Q</kbd> | main menu |
-| <kbd>F</kbd> | whole map / scrolling close-up view |
-| <kbd>M</kbd> | sound on / off |
-| <kbd>V</kbd> | sound settings: music and sound volume, mute (pauses the level) |
+| <kbd>↑</kbd> <kbd>↓</kbd> <kbd>←</kbd> <kbd>→</kbd> | перемещение / выбор; в настройках <kbd>←</kbd> <kbd>→</kbd> задают выбранную громкость |
+| <kbd>Enter</kbd> | подтвердить, начать выбранный уровень |
+| <kbd>H</kbd> | показать или скрыть подсказку |
+| <kbd>R</kbd> | перезапустить уровень |
+| <kbd>G</kbd> | сгенерировать новый уровень: случайное зерно или заданное |
+| <kbd>B</kbd> | размер генерируемых карт: 16, 24 или 32 клетки по стороне (генерирует одну в сгенерированном уровне) |
+| <kbd>T</kbd> | уровни с морковкой / яйцом (не в сгенерированном уровне) |
+| <kbd>E</kbd> | скопировать ссылку на сгенерированный уровень (его зерно и размер карты) |
+| <kbd>Esc</kbd> | назад: с уровня к списку уровней, из списка в главное меню; закрывает «Настройки» (возврат к уровню) и «Новый уровень» |
+| <kbd>Q</kbd> | главное меню |
+| <kbd>F</kbd> | вся карта / прокручиваемый вид крупным планом |
+| <kbd>M</kbd> | звук включён / выключен |
+| <kbd>V</kbd> | настройки звука: громкость музыки и звуков, без звука (приостанавливает уровень) |
 
 ## `.lvl` format
 
