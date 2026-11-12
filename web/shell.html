@@ -203,6 +203,7 @@
   <div class="row">
     <span><button class="key" type="button" tabindex="-1" data-nav="enter">Enter</button> confirm</span>
     <span data-pages="seed seed-form settings"><button class="key" type="button" tabindex="-1" data-nav="back">Esc</button> <span id="nav-back-label">back</span></span>
+    <span data-pages="seed seed-form settings"><button class="key" type="button" tabindex="-1" data-nav="menu">Q</button> main menu</span>
   </div>
 </footer>
 
@@ -278,6 +279,7 @@
   // to the row above / below, to the same column where it has as many.
   function makePage(name, items, opts = {}) {
     const page = { name, items, index: 0, back: opts.back || null, rows: opts.rows || null,
+                   toMenu: opts.toMenu || null,
                    passKeys: opts.passKeys || [], backLabel: opts.backLabel || 'back',
                    column: 0 };
     // The highlighted box: a slider's whole row, otherwise the control itself.
@@ -350,7 +352,8 @@
   let muted = false;
   // Back first: Up from Music, Down from Mute reach it
   const settingsPage = makePage('settings', [backButton, musicSlider, soundSlider, muteButton],
-      { back: closeSettings, passKeys: ['v', 'V', 'm', 'M'] });
+      { back: closeSettings, passKeys: ['v', 'V', 'm', 'M'],
+        toMenu: () => { closeSettings(); pressGameKey(113); } });  // Q, as in the game
 
   function showAudio(music, sound, isMuted) {
     musicSlider.value = music;
@@ -422,10 +425,11 @@
   // Back is the top row: Up from the sizes reaches it
   const seedRows = [[backButton], sizeButtons, diffButtons, [$('btn-seed-random')], [$('btn-seed-fixed')]];
   const seedPage = makePage('seed', seedRows.flat(),
-                            { rows: seedRows, back: closeSeedDialog, backLabel: 'cancel' });
+                            { rows: seedRows, back: closeSeedDialog, backLabel: 'cancel',
+                              toMenu: seedToMenu });
   const formRows = [[backButton], sizeButtons, diffButtons, [seedInput], [$('btn-seed-go')]];
   const seedFormPage = makePage('seed-form', formRows.flat(),
-                                { rows: formRows, back: showSeedChoice });
+                                { rows: formRows, back: showSeedChoice, toMenu: seedToMenu });
 
   function showSize(size) {
     sizeIndex = Math.max(0, SIZES.indexOf(size));
@@ -471,6 +475,13 @@
     seedDialog.classList.add('hidden');
     setPaused(false);
     refresh();
+  }
+
+  // Q, as in the game: the window closes and the game goes to the main menu
+  // (opened from the start page, it is already there).
+  function seedToMenu() {
+    closeSeedDialog();
+    pressGameKey(113);  // SDLK_q
   }
 
   function generateWithSeed(seed) {
@@ -642,6 +653,12 @@
         e.preventDefault();
         if (page.back) page.back();
         break;
+      // the seed field takes digits only, so Q works while typing in it too
+      case 'q': case 'Q':
+        if (!page.toMenu) break;
+        e.preventDefault();
+        if (!e.repeat) page.toMenu();
+        break;
     }
   }
 
@@ -682,6 +699,7 @@
         }
         case 'enter': page.confirm(); break;
         case 'back': if (page.back) page.back(); break;
+        case 'menu': if (page.toMenu) page.toMenu(); break;
       }
     });
   });
