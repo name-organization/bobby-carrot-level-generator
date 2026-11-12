@@ -75,23 +75,20 @@ docker compose up
 | <kbd>M</kbd> | звук включён / выключен |
 | <kbd>V</kbd> | настройки звука: громкость музыки и звуков, без звука (приостанавливает уровень) |
 
-## `.lvl` format
+## Формат уровней `.lvl`
 
-A level is a plain-text map, one character per cell, of up to 32 × 32 cells;
-the original levels are 16 × 16. Files: `assets/v1/level/normal01.lvl` …
-`normal30.lvl` and `egg01.lvl` … `egg20.lvl`.
+Уровень -- это набор клеток, один символ на клетку, размером до 32x32 клеток; оригинальные уровни — 16x16. 
+Файлы: `assets/v1/level/normal01.lvl` … `normal30.lvl` и `egg01.lvl` … `egg20.lvl`.
 
-- Map rows top to bottom, at most 32 of them and at most 32 characters each.
-  The level is as high as there are rows and as wide as the longest row; a
-  shorter row, or an empty line, is filled up with path.
-- A line starting with `;` is a comment and not a row. The first comment is the
-  level name.
-- Line endings: LF or CRLF.
-- One start `0` and one exit `a` per level.
-- If the map has carrots it is a carrot level, otherwise an egg level (grass
-  counts).
-- Any other character is an error that names its line and column.
+- Строки карты сверху вниз, не более 32 строк и не более 32 символов в каждой. Высота уровня равна числу строк, ширина — длине самой длинной строки; более короткая строка или пустая строка заполняются дорожкой.
+- Строка, начинающаяся с `;`, — комментарий, а не строка карты. Первый комментарий — имя уровня.
+- Окончания строк: управляющие символы LF или CRLF.
+- Один старт `0` и один выход `a` на уровень.
+- Если на карте есть морковки — это уровень с морковками, иначе — уровень с яйцом (трава считается).
+- Любой другой символ — ошибка, указывающая свою строку и столбец.
 
+
+Пример -- уровень 16×3; оригинальные уровни имеют 16 строк:
 ```
 ; Example
 ################
@@ -99,106 +96,52 @@ the original levels are 16 × 16. Files: `assets/v1/level/normal01.lvl` …
 ################
 ```
 
-(The example is a 16 × 3 level; the original levels have 16 rows.)
-
-| Char | Cell |
+| Символ | Клетка |
 |---|---|
-| `#` `1`–`9` `(` `)` | hedge, impassable |
-| `=` `"` `{` `}` `[` `]` | fence, impassable |
-| space, `.`, `C` | path |
-| `0` | start |
-| `a` (or `@`) | exit; opens once everything is collected |
-| `*` | carrot |
-| `X` | grass (egg levels): counted when Bobby leaves it, then turns into `x` and cannot be entered again |
-| `_` | cracked floor: turns into a hole `W` when Bobby leaves it; stepping into `W` kills him |
-| `K` `G` | grey key, grey lock (one key opens one lock) |
-| `Y` `H` | yellow key, yellow lock |
-| `R` `D` | red key, red lock |
-| `-` `\|` | rail, horizontal / vertical: passable only along it, turns 90° each time Bobby leaves it |
-| `F` `T` `J` `L` | rail corner joining east–south, west–south, west–north, north–east: entered and left only through those sides, turns clockwise each time Bobby leaves it |
-| `b` / `B` | red button, active / used: stepping on `b` turns every rail and rail corner, and swaps every `b` and `B` |
-| `n` / `N` | yellow button, active / used: stepping on `n` reverses every conveyor, and swaps every `n` and `N` |
-| `<` `>` `^` `V` | conveyor: carries Bobby in its direction; cannot be entered from the side or head-on |
+| `#` `1`–`9` `(` `)` | живая изгородь, непроходима |
+| `=` `"` `{` `}` `[` `]` | забор, непроходим |
+| пробел, `.`, `C` | дорожка |
+| `0` | старт |
+| `a` (или `@`) | выход; открывается, когда всё собрано |
+| `*` | морковка |
+| `X` | трава (уровни с яйцом): засчитывается, когда Бобби покидает её, затем превращается в `x`, и войти в неё снова нельзя |
+| `_` | треснувший пол: превращается в дыру `W`, когда Бобби покидает его; шаг в `W` убивает его |
+| `K` `G` | серый ключ, серый замок (один ключ открывает один замок) |
+| `Y` `H` | жёлтый ключ, жёлтый замок |
+| `R` `D` | красный ключ, красный замок |
+| `-` `\|` | рельс, горизонтальный / вертикальный: проходим только вдоль него, поворачивается на 90° каждый раз, когда Бобби покидает его |
+| `F` `T` `J` `L` | угол рельса, соединяющий восток–юг, запад–юг, запад–север, север–восток: вход и выход только через эти стороны, поворачивается по часовой стрелке каждый раз, когда Бобби покидает его |
+| `b` / `B` | красная кнопка, активная / использованная: шаг на `b` поворачивает каждый рельс и угол рельса и меняет местами каждые `b` и `B` |
+| `n` / `N` | жёлтая кнопка, активная / использованная: шаг на `n` разворачивает каждый конвейер и меняет местами каждые `n` и `N` |
+| `<` `>` `^` `V` | конвейер: несёт Бобби в своём направлении; нельзя войти сбоку или навстречу |
 
-`o` (a taken carrot) and `?` are internal and do not appear in files. The
-table matches `kTileChars` in `src/core/tilechar.hpp`.
+`o` (взятая морковка) и `?` -- внутренние и не появляются в файлах. Таблица соответствует `kTileChars` в `src/core/tilechar.hpp`.
 
-## Level generator
+## Генератор уровней
 
-### Sharing a generated level
+### Совместное использование сгенерированного уровня
 
-A generated level is fully given by its seed, map size and difficulty: the
-generator uses its own random numbers (`src/core/rng.hpp`), limits the solver by
-a count, not a time, and scores levels in integers, so a seed gives the same
-level natively and in the browser. <kbd>E</kbd> puts all three into the page
-address and copies it, e.g.
-`http://localhost:8080/?seed=123456&size=24&difficulty=hard`; opening that link
-starts the same level. `size` is 16, 24 or 32 and may be left out for 16.
-`difficulty` is `easy`, `medium` or `hard`; a link without one is a link from
-before difficulties and gives the level it always gave (the first medium level
-of the seed, not picked by its score). The native build prints
-`--seed=… --size=… --difficulty=…` instead and takes the same options on start.
-Levels made with <kbd>G</kbd> and the ones that follow a finished generated
-level keep the map size and difficulty and get a random seed without asking.
+Сгенерированный уровень полностью задаётся своим зерном, размером карты и сложностью: генератор использует собственные случайные числа (`src/core/rng.hpp`), ограничивает решатель счётчиком, а не временем, и оценивает уровни целыми числами, поэтому зерно даёт один и тот же уровень и в нативной сборке, и в браузере. <kbd>E</kbd> помещает все три в адрес страницы и копирует его, например `http://localhost:8080/?seed=123456&size=24&difficulty=hard`; открытие этой ссылки запускает тот же уровень. `size` -- 16, 24 или 32, и его можно опустить для 16. `difficulty` -- `easy`, `medium` или `hard`; ссылка без неё -- ссылка времён до сложностей и даёт уровень, который она давала всегда (первый средний уровень зерна, а не выбранный по его оценке). Нативная сборка вместо этого печатает `--seed=… --size=… --difficulty=…` и принимает те же параметры при запуске. Уровни, созданные с помощью <kbd>G</kbd>, и те, что идут после завершённого сгенерированного уровня, сохраняют размер карты и сложность и получают случайное зерно без запроса.
 
-### Difficulty
+### Сложность
 
-A generated level is easy, medium or hard. `src/core/difficulty.{hpp,cpp}`
-scores a level from 0 to 100 out of three measures, each compared with what is
-typical of a map of its size (so the difficulties mean the same on 16, 24 and
-32 cells):
+Сгенерированный уровень бывает лёгким, средним или сложным. `src/core/difficulty.{hpp,cpp}` оценивает уровень от 0 до 100 по трём мерам, каждая сравнивается с типичной для карты её размера (поэтому сложности означают одно и то же на 16, 24 и 32 клетках):
 
-- **cover**: moves of the winning solution the generator verified the level
-  with, per walkable cell -- how many times over Bobby walks the island;
-- **spikes**: spikes per 100 walkable cells;
-- **naive**: how often a player who always goes for the nearest carrot cuts
-  himself off with a spike (out of 20 tries); it counts twice.
+- **cover**: ходы выигрышного решения, с которым генератор проверял уровень, на проходимую клетку -- сколько раз Бобби обходит остров;
+- **spikes**: шипы на 100 проходимых клеток;
+- **naive**: как часто игрок, который всегда идёт к ближайшей морковке, отрезает себя шипом (из 20 попыток); считается дважды.
 
-Below 38 is easy, 62 and up is hard, medium lies between. A difficulty first
-sets the generator's parameters (`roomgen::Params::forSize`: easy has few spike
-doors and spikes and a smaller island, hard spikes every door it can, twice the
-spikes and fewer cycles), then up to three levels are built (the first from
-the seed itself) and the first whose score lands in the difficulty's band is
-kept, or the closest of the three. The score is printed with the level in the
-browser console.
+Ниже 38 -- лёгкий, 62 и выше -- сложный, средний лежит между. Сложность сначала задаёт параметры генератора (`roomgen::Params::forSize`: у лёгкого мало шиповых дверей и шипов и меньший остров, у сложного шипы на каждой двери, где это возможно, вдвое больше шипов и меньше циклов), затем строится до трёх уровней (первый -- из самого зерна) и сохраняется первый, чья оценка попадает в полосу сложности, или ближайший из трёх. Оценка печатается вместе с уровнем в консоль браузера.
 
-The generator builds a level from rooms (`src/core/roomgen.{hpp,cpp}`, the
-Spelunky approach): the map is cut into a grid of room slots, a random path of
-rooms runs from the start to the exit, side rooms hang off it, and more doors
-between neighbouring rooms close cycles, so that most rooms open into two to
-four others and there is more than one way through. Any door may be spikes:
-crossed once, at the wrong moment it cuts Bobby off from what lies behind it.
+Генератор строит уровень из комнат (`src/core/roomgen.{hpp,cpp}`, подход Spelunky): карта разрезается на сетку слотов комнат, случайный путь комнат идёт от старта к выходу, боковые комнаты свисают с него, а дополнительные двери между соседними комнатами замыкают циклы, так что большинство комнат открывается в две–четыре другие и есть более одного пути насквозь. Любая дверь может быть шипами: пересечённая один раз, в неподходящий момент она отрезает Бобби от того, что за ней.
 
-The rooms are filled by wave function collapse (`src/core/wfc.{hpp,cpp}`):
-every 3 × 3 window of the 30 original carrot levels, written in five symbols
-(hedge, fence, path, carrot, spike) and taken in all eight orientations, is a
-pattern, and the map is filled so that every 3 × 3 window in it is one of them
--- the whole map in one run first, so that each wall is chosen knowing both
-rooms it separates, and room by room (each with its walls) if that fails. The
-layout pins the doors, the cells they lead to, the start and the exit; a
-one-cell wall between two rooms may come out hedge or fence. A room WFC cannot
-fill (about 4%) gets fixed patterns (carrot fields, rows, pillars) instead. The
-model is learned from `assets/v1/level` with the first generated level.
+Комнаты заполняются волновой функцией коллапса (`src/core/wfc.{hpp,cpp}`): каждое окно 3x3 из 30 оригинальных уровней с морковками, записанное в пяти символах (живая изгородь, забор, дорожка, морковка, шип) и взятое во всех восьми ориентациях, -- это паттерн, и карта заполняется так, чтобы каждое окно 3x3 в ней было одним из них -- сначала вся карта за один прогон, чтобы каждая стена выбиралась с учётом обеих комнат, которые она разделяет, а затем комната за комнатой (каждая со своими стенами), если это не удаётся. Раскладка закрепляет двери, клетки, в которые они ведут, старт и выход; стена в одну клетку между двумя комнатами может выйти живой изгородью или забором. Комната, которую WFC не может заполнить (около 4%), получает вместо этого фиксированные паттерны (морковные поля, ряды, столбы). Модель обучается на `assets/v1/level` с первым сгенерированным уровнем.
 
-Hedge and fence pieces are then picked from their neighbours by
-`src/core/autotile.{hpp,cpp}`, whose tables were read off the 50 original
-levels. Every level is checked with the hint solver: the spikes are put in
-one at a time, door spikes first, each kept only if some order still wins;
-more are added towards a target (six on 16 × 16), each also leaving at most two
-of the 3 × 3 windows around it unlike the originals. Each check walks the
-current solution, and only when the new spike breaks it does the solver look
-for another way, a few times a level at most. The solution is handed to the hint as the reference. The
-seed and the time it took are printed to the browser console, and the seed gives
-the same level in the bench.
+Затем фрагменты живой изгороди и забора подбираются по соседям с помощью `src/core/autotile.{hpp,cpp}`, чьи таблицы были считаны с 50 оригинальных уровней. Каждый уровень проверяется решателем подсказок: шипы ставятся по одному, сначала шипы на дверях, и каждый сохраняется, только если какой-то порядок всё ещё выигрывает; дополнительные добавляются к цели (шесть на 16x16), каждый также оставляет не более двух окон 3x3 вокруг себя непохожими на оригиналы. Каждая проверка проходит по текущему решению, и только когда новый шип ломает его, решатель ищет другой путь -- несколько раз на уровень, не более. Решение передаётся подсказке как эталонное. Зерно и затраченное время печатаются в консоль браузера, и зерно даёт тот же уровень в бенчмарке.
 
-The generator works on a `Canvas` of any size (`src/core/canvas.hpp`); up to
-32 × 32 it is verified and played. The New level window picks 16, 24 or 32 cells a side;
-`roomgen::Params::forSize` sets the room size (4, 5, 6), the carrot weight and
-the spike target for each, with what they measured.
+Генератор работает на `Canvas` любого размера (`src/core/canvas.hpp`); до 32x32 он проверяется и играется. Окно «Новый уровень» выбирает 16, 24 или 32 клетки по стороне; `roomgen::Params::forSize` задаёт размер комнаты (4, 5, 6), вес морковок и цель по шипам для каждого, с тем, что они измерили.
 
-The bench generates levels, verifies them, replays each solution through the
-real `Game` and compares area, carrots, spikes and 3 × 3 patterns with the
-originals:
+Бенчмарк генерирует уровни, проверяет их, проигрывает каждое решение через реальный `Game` и сравнивает площадь, морковки, шипы и паттерны 3x3 с оригиналами:
 
 ```bash
 $ tools/build_hint_tests.sh && build-hint/gen_bench --count 5      # print 5 levels
@@ -209,42 +152,26 @@ $ build-hint/gen_bench --algo walk --count 300 -q                # the old rando
 $ build-hint/gen_bench --size 32x32 --count 3                     # a bigger map
 ```
 
-The summary also has the room graph (doors per room, cycles) and how often a
-naive player, who always walks to the nearest carrot, cuts himself off: 43% of
-tries on 16 × 16 levels, 59% on the original levels without extra mechanics.
+В сводке также есть граф комнат (двери на комнату, циклы) и как часто наивный игрок, который всегда идёт к ближайшей морковке, отрезает себя: 43% попыток на уровнях 16x16, 59% на оригинальных уровнях без дополнительных механик.
 
-"patterns" in the summary is the share of a level's 3 × 3 windows that also
-occur in an original. With `--holdout` WFC learns from the odd originals and is
-scored against the even ones; the originals score 37% against each other, the
-fixed patterns 40% and WFC 48% (500 levels, 4 × 4 rooms). The knobs behind
-these numbers (carrot and hedge weights, added spikes, fill) are documented in
-`roomgen::Params` with what each setting measured.
+«patterns» в сводке -- это доля окон 3x3 уровня, которые также встречаются в оригинале. С `--holdout` WFC учится на нечётных оригиналах и оценивается на чётных; оригиналы дают 37% друг против друга, фиксированные паттерны -- 40%, а WFC -- 48% (500 уровней, комнаты 4x4). Ручки за этими числами (веса морковок и живой изгороди, добавленные шипы, заполнение) задокументированы в `roomgen::Params` с тем, что измерила каждая настройка.
 
-All options are listed at the top of `tests/gen_bench.cpp`.
+Все параметры перечислены в начале `tests/gen_bench.cpp`.
 
-## Hint
+## Подсказка
 
-Press <kbd>H</kbd> during a level to show a path to the exit, press it again to
-hide it. The path follows Bobby; stepping off it re-routes back to the
-remembered route. On a dead end the board turns red.
+Нажмите `H` во время уровня, чтобы показать путь к выходу, нажмите снова, чтобы скрыть его. Путь следует за Бобби; шаг с него перенаправляет обратно к запомненному маршруту. В тупике доска становится красной.
 
-- `src/core/hint.{hpp,cpp}` -- the hint logic: flood fill, return to the
-  reference path, then a SAT check on the map collapsed to regions and spikes.
-  Model and proofs: `docs/smt-formalization.md`.
-- `src/core/sat.{hpp,cpp}` -- thin wrapper over the CaDiCaL SAT solver
-  (`src/third_party/cadical`, MIT).
-- `Game::toggleHint()`, `Game::hint()`, `Game::hintPath()` -- the API for the
-  front end. `Game::setReference()` takes the reference solution once the level
-  generator ships one; until then the first hint finds it with the solver.
-- `src/gfx/hint_overlay.{hpp,cpp}` -- temporary debug drawing of the path; how
-  to remove it is described at the top of the header.
+- `src/core/hint.{hpp,cpp}` -- логика подсказки: заливка, возврат к эталонному пути, затем SAT-проверка на карте, свёрнутой в регионы и шипы. Модель и доказательства: `docs/smt-formalization.md`.
+- `src/core/sat.{hpp,cpp}` -- тонкая обёртка над SAT-решателем CaDiCaL (`src/third_party/cadical`, MIT).
+- `Game::toggleHint()`, `Game::hint()`, `Game::hintPath()` -- API для фронтенда. `Game::setReference()` принимает эталонное решение, как только генератор уровней его поставляет; до тех пор первая подсказка находит его с помощью решателя.
+- `src/gfx/hint_overlay.{hpp,cpp}` -- временная отладочная отрисовка пути; как её удалить, описано в начале заголовка.
 
-Tests and the prototype:
+Тесты и прототип:
 
 ```bash
 $ tools/build_hint_tests.sh && build-hint/hint_game   # hint through Game, levels 1-7
 $ pip install z3-solver && tools/smt_solver.py assets/v1/level/normal01.lvl
 ```
 
-`tools/smt_solver.py` is the Python/z3 prototype of the move-by-move encoding
-from the document (shortest solutions, `--selftest` against brute force).
+`tools/smt_solver.py` — прототип на Python/z3 для пошаговой кодировки из документа (кратчайшие решения, `--selftest` против полного перебора).
