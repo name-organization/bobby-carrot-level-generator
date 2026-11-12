@@ -111,10 +111,13 @@ void App::shutdown() {
 void App::applyLayout() {
     const int w = gfx_.logicalWidth();
     const int h = gfx_.logicalHeight();
+    // The window is the whole board's size in both views: the close-up draws
+    // fewer cells into it, so they come out bigger, and the page around the
+    // board does not move when F switches the view.
     // A big board would make a huge window: past kMaxWindowSide it is scaled
     // down (SDL fits the logical size into it). In the browser the scale is 1
     // and the canvas keeps every pixel; the page's CSS fits it to the screen.
-    int ww = w * windowScale_, wh = h * windowScale_;
+    int ww = gfx_.fullWidth() * windowScale_, wh = gfx_.fullHeight() * windowScale_;
     const int side = std::max(ww, wh);
     if (side > kMaxWindowSide) {
         ww = ww * kMaxWindowSide / side;
@@ -125,13 +128,17 @@ void App::applyLayout() {
 }
 
 // The board is the level's size while a level is on screen and the classic
-// 16x16 on the menus; when that changes, so do the window and the viewport.
+// 16x16 on the menus; the close-up view (F) only shows while a level is being
+// played, not on the menus nor under the web page's windows, which pause the
+// level. When either changes, so do the window and the viewport.
 void App::syncBoard() {
     const bool level = screen_ == Screen::Play || screen_ == Screen::Cleared;
     const int w = level ? game_.grid().w : Grid::kClassic;
     const int h = level ? game_.grid().h : Grid::kClassic;
-    if (w == gfx_.boardW() && h == gfx_.boardH()) return;
+    const bool closeUp = level && !paused_;
+    if (w == gfx_.boardW() && h == gfx_.boardH() && closeUp == gfx_.closeUpAllowed()) return;
     gfx_.setBoard(w, h);
+    gfx_.setCloseUpAllowed(closeUp);
     applyLayout();
 }
 
@@ -543,7 +550,13 @@ void App::onKey(SDL_Keycode key) {
         case SDLK_ESCAPE: case SDLK_BACKSPACE: onBack(); break;
         case SDLK_r: if (screen_ == Screen::Play) game_.restart(); break;
         case SDLK_h: if (screen_ == Screen::Play) game_.toggleHint(); break;
-        case SDLK_f: gfx_.toggleViewMode(); applyLayout(); break;
+        // whole map / close-up, in a level only (the menus keep the whole view)
+        case SDLK_f:
+            if (screen_ == Screen::Play || screen_ == Screen::Cleared) {
+                gfx_.toggleViewMode();
+                applyLayout();
+            }
+            break;
         case SDLK_m: mixer_.toggleMuted(); save_.muted = mixer_.muted(); saveProgress(save_); break;
         // the Settings page of the web page (music, sounds, mute); the level
         // is paused under it, see setPaused()

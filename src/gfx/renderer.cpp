@@ -63,17 +63,17 @@ void Renderer::blit(const Texture& t, const SDL_Rect* src, int x, int y) {
 }
 
 void Renderer::updateCamera(const Game& game) {
-    if (view_ == ViewMode::FullMap) {
+    if (!closeUp()) {
         camX_ = camY_ = 0;
         return;
     }
     const int px = static_cast<int>(game.player().fx() * kTileSize);
     const int py = static_cast<int>(game.player().fy() * kTileSize);
     const Grid& g = game.grid();
-    camX_ = std::clamp(px - kHandheldW / 2 + kTileSize / 2, 0,
-                       std::max(0, g.w * kTileSize - kHandheldW));
-    camY_ = std::clamp(py - kHandheldH / 2 + kTileSize / 2, 0,
-                       std::max(0, g.h * kTileSize - kHandheldH));
+    const int viewW = logicalWidth();
+    const int viewH = logicalHeight();
+    camX_ = std::clamp(px - viewW / 2 + kTileSize / 2, 0, std::max(0, g.w * kTileSize - viewW));
+    camY_ = std::clamp(py - viewH / 2 + kTileSize / 2, 0, std::max(0, g.h * kTileSize - viewH));
 }
 
 void Renderer::drawTiles(const Game& game, int frameTick) {
