@@ -27,7 +27,7 @@ public:
      * @param height Requested map height, up to Grid::kMaxH.
      * @param difficulty Requested difficulty band.
      * @param rated False selects the first Medium candidate for legacy seed links.
-     * @return True after loading, including the random-walk fallback.
+     * @return True after loading a verified level; false leaves the current session unchanged.
      */
     bool loadProcedural(unsigned int seed = 0, int width = Grid::kClassic,
                         int height = Grid::kClassic, Difficulty difficulty = Difficulty::Medium,
@@ -55,8 +55,6 @@ public:
     int levelIndex() const          { return index_; }
     /**
      * @brief Generated seed and requested dimensions; seed zero identifies shipped/imported levels.
-     *
-     * @note A generator fallback can produce different actual dimensions.
      */
     unsigned int seed() const       { return seed_; }
     int generatedWidth() const      { return genWidth_; }

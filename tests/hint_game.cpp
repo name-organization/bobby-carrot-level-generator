@@ -13,7 +13,6 @@
 #include <vector>
 
 #include "../src/core/game.hpp"
-#include "../src/core/generator.hpp"
 
 using namespace bc;
 
@@ -263,13 +262,12 @@ int main(int argc, char** argv) {
     // otherwise once Bobby leaves the block or collects it; until then the
     // hint only leads back to its route. The rebuilt route keeps off the taken
     // carrots where it can and still wins.
-    // (the room generator first, then the old random walk, which has more
-    // lone carrots)
     int lone = 0, deferred = 0, wrong = 0;
-    for (unsigned run = 0; run < 40; ++run) {
-        const unsigned seed = run % 20 + 1;
-        if (run < 20) g.loadProcedural(seed);
-        else g.loadLevel(LevelGenerator::generateRandom(seed));
+    for (unsigned seed = 1; seed <= 40; ++seed) {
+        if (!g.loadProcedural(seed)) {
+            check(false, "generated: cannot load seed " + std::to_string(seed));
+            continue;
+        }
         settle(g);
         const std::vector<int> blocks = carrotBlocks(g.grid());
         h = askHint(g);
@@ -368,6 +366,16 @@ int main(int argc, char** argv) {
     settle(g);
     h = askHint(g);
     check(h && h->stage == hint::Stage::Unsupported, "normal8: reported as unsupported");
+
+    const Grid beforeGeneration = g.grid();
+    const Coord cellBeforeGeneration = g.player().cell();
+    const int ticksBeforeGeneration = g.elapsedTicks();
+    check(!g.loadProcedural(1, Grid::kMaxW + 1, Grid::kClassic),
+          "generated: an oversized map is rejected");
+    check(g.grid().cells == beforeGeneration.cells && g.grid().w == beforeGeneration.w &&
+              g.grid().h == beforeGeneration.h && g.levelIndex() == 7 && g.seed() == 0 &&
+              g.player().cell() == cellBeforeGeneration && g.elapsedTicks() == ticksBeforeGeneration,
+          "generated: failure preserves the current session");
 
     check(slowAnswers == 0, "every hint answered on the next tick (late: " +
                                 std::to_string(slowAnswers) + ")");

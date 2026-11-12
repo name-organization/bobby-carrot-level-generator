@@ -8,7 +8,6 @@
  *
  *   --count N      levels to generate (10)
  *   --seed S       seed of the first level; the next ones count up (1)
- *   --algo A       rooms | walk -- walk is the old random-walk generator (rooms)
  *   --size WxH     map size (16x16), with the defaults roomgen::Params::forSize
  *                  picks for it; a map over 32x32 is printed but not verified,
  *                  the engine plays up to 32x32
@@ -52,7 +51,6 @@
 #include "../src/core/canvas.hpp"
 #include "../src/core/difficulty.hpp"
 #include "../src/core/game.hpp"
-#include "../src/core/generator.hpp"
 #include "../src/core/hint.hpp"
 #include "../src/core/rng.hpp"
 #include "../src/core/roomgen.hpp"
@@ -65,7 +63,6 @@ namespace {
 struct Options {
     int count = 10;
     std::uint32_t seed = 1;
-    std::string algo = "rooms";
     roomgen::Params params;
     std::string assets = "assets/v1";
     std::string out;
@@ -98,7 +95,6 @@ Options parse(int argc, char** argv) {
         auto number = [&]() { return std::atof(value().c_str()); };
         if (a == "--count") o.count = std::atoi(value().c_str());
         else if (a == "--seed") o.seed = static_cast<std::uint32_t>(std::strtoul(value().c_str(), nullptr, 10));
-        else if (a == "--algo") o.algo = value();
         else if (a == "--size") {
             const std::string v = value();
             if (std::sscanf(v.c_str(), "%dx%d", &o.params.width, &o.params.height) != 2)
@@ -135,9 +131,6 @@ Options parse(int argc, char** argv) {
         else if (a == "-q") o.quiet = true;
         else usage(("unknown option " + a).c_str());
     }
-    if (o.algo != "rooms" && o.algo != "walk") usage("--algo: rooms|walk");
-    if (o.algo == "walk" && (o.params.width != Grid::kClassic || o.params.height != Grid::kClassic))
-        usage("the walk generator makes 16x16 maps only");
     return o;
 }
 
@@ -258,7 +251,11 @@ struct Graph {
 };
 
 double naiveLossRate(const Level& level, std::uint32_t seed) {
-    return difficulty::naiveLossPercent(level, seed) / 100.0;
+    Rng rng(seed * 7919u + 1u);
+    int lost = 0;
+    for (int i = 0; i < difficulty::kNaiveTries; ++i)
+        lost += difficulty::naiveLeft(level, rng) != 0;
+    return static_cast<double>(lost) / difficulty::kNaiveTries;
 }
 
 // Same as tests/hint_game.cpp: tick until Bobby stands still again.
@@ -322,7 +319,7 @@ int main(int argc, char** argv) {
     const Corpus training = o.holdout ? loadCorpus(o.assets, 1) : corpus;
     const wfc::Model model = wfc::learn(training.levels);
     if (o.wfc) run.params.model = &model;
-    if (o.wfc && o.algo == "rooms")
+    if (o.wfc)
         std::printf("WFC: %zu patterns from %zu levels%s\n", model.patterns.size(),
                     training.levels.size(), o.holdout ? " (odd ones; scored against the even ones)" : "");
     if (corpus.levels.empty())
@@ -346,50 +343,40 @@ int main(int argc, char** argv) {
         std::vector<Dir> solution;
         bool ok = false;
         std::string about;
-        if (o.algo == "rooms") {
-            const roomgen::Result r = roomgen::generate(run.params, seed);
-            canvas = r.canvas;
-            solution = r.solution;
-            ok = r.verified;
-            attempts += r.attempts;
-            wfcRooms += r.wfcRooms;
-            allRooms += static_cast<int>(r.rooms.size());
-            repaired += r.spikesRepaired;
-            int path = 0, spikeDoors = 0, merged = 0, loops = 0;
-            std::vector<int> degree(r.rooms.size(), 0);
-            for (const roomgen::Room& room : r.rooms)
-                if (room.kind != roomgen::RoomKind::Side) ++path;
-            for (const roomgen::Door& door : r.doors) {
-                spikeDoors += door.spike;
-                merged += door.merged;
-                loops += door.loop;
-                ++degree[static_cast<std::size_t>(door.a)];
-                ++degree[static_cast<std::size_t>(door.b)];
-            }
-            for (int d : degree) {
-                graph.degree.add(d);
-                graph.twoPlus += d >= 2;
-            }
-            graph.cycles.add(loops);
-            graph.spikeDoors.add(r.doors.empty() ? 0.0 : static_cast<double>(spikeDoors) / r.doors.size());
-            char buf[240];
-            std::snprintf(buf, sizeof(buf),
-                          "%dx%d slots, %zu rooms (%d on the path, %zu side), %zu doors (%d close "
-                          "cycles, %d spikes, %d merged), %s walls, attempt %d, rooms by WFC %d/%zu%s",
-                          r.slotsX, r.slotsY, r.rooms.size(), path, r.rooms.size() - path,
-                          r.doors.size(), loops, spikeDoors, merged, roomgen::wallsName(r.walls),
-                          r.attempts, r.wfcRooms, r.rooms.size(),
-                          r.spikesRepaired ? ", spikes repaired" : "");
-            about = buf;
-        } else {
-            const Level level = LevelGenerator::generateRandom(seed);
-            canvas = Canvas::fromLevel(level);
-            const hint::Result h = hint::compute(level.grid, level.start, {});
-            ok = h.verdict == hint::Verdict::Winnable;
-            solution = h.moves;
-            attempts += 1;
-            about = std::string("random walk, solver: ") + hint::verdictName(h.verdict);
+        const roomgen::Result r = roomgen::generate(run.params, seed);
+        canvas = r.canvas;
+        solution = r.solution;
+        ok = r.verified;
+        attempts += r.attempts;
+        wfcRooms += r.wfcRooms;
+        allRooms += static_cast<int>(r.rooms.size());
+        repaired += r.spikesRepaired;
+        int path = 0, spikeDoors = 0, merged = 0, loops = 0;
+        std::vector<int> degree(r.rooms.size(), 0);
+        for (const roomgen::Room& room : r.rooms)
+            if (room.kind != roomgen::RoomKind::Side) ++path;
+        for (const roomgen::Door& door : r.doors) {
+            spikeDoors += door.spike;
+            merged += door.merged;
+            loops += door.loop;
+            ++degree[static_cast<std::size_t>(door.a)];
+            ++degree[static_cast<std::size_t>(door.b)];
         }
+        for (int d : degree) {
+            graph.degree.add(d);
+            graph.twoPlus += d >= 2;
+        }
+        graph.cycles.add(loops);
+        graph.spikeDoors.add(r.doors.empty() ? 0.0 : static_cast<double>(spikeDoors) / r.doors.size());
+        char buf[240];
+        std::snprintf(buf, sizeof(buf),
+                      "%dx%d slots, %zu rooms (%d on the path, %zu side), %zu doors (%d close "
+                      "cycles, %d spikes, %d merged), %s walls, attempt %d, rooms by WFC %d/%zu%s",
+                      r.slotsX, r.slotsY, r.rooms.size(), path, r.rooms.size() - path,
+                      r.doors.size(), loops, spikeDoors, merged, roomgen::wallsName(r.walls),
+                      r.attempts, r.wfcRooms, r.rooms.size(),
+                      r.spikesRepaired ? ", spikes repaired" : "");
+        about = buf;
         const double ms = std::chrono::duration<double, std::milli>(
                               std::chrono::steady_clock::now() - started).count();
         totalMs += ms;
@@ -444,7 +431,7 @@ int main(int argc, char** argv) {
     std::printf("\n%-12s %-16s %-16s %-14s %-16s %-16s %s\n", "", "area", "carrots", "spikes",
                 "island w", "island h", "patterns");
     if (!corpus.levels.empty()) originals.print("originals");
-    generated.print(o.algo.c_str());
+    generated.print("rooms");
     if (playable)
         std::printf("\nverified %d/%d, replay won %d/%d, .lvl round trip %d/%d, %.1f moves, "
                     "%.2f attempts, %.2f ms per level\n",
@@ -454,10 +441,10 @@ int main(int argc, char** argv) {
     else
         std::printf("\n%.2f ms per level, not verified: the engine plays up to 32x32\n",
                     o.count ? totalMs / o.count : 0.0);
-    if (o.algo == "rooms" && o.wfc)
+    if (o.wfc)
         std::printf("rooms by WFC %d/%d (%.1f%%), spikes repaired in %d levels\n", wfcRooms,
                     allRooms, allRooms ? 100.0 * wfcRooms / allRooms : 0.0, repaired);
-    if (o.algo == "rooms" && graph.degree.n)
+    if (graph.degree.n)
         std::printf("room graph: %.1f doors per room, %.0f%% of rooms with 2+ doors, %.1f cycles "
                     "per level, %.0f%% of doors spiked\n",
                     graph.degree.sum / graph.degree.n, 100.0 * graph.twoPlus / graph.degree.n,

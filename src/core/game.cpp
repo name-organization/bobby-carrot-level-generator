@@ -1,6 +1,5 @@
 #include "game.hpp"
 #include "canvas.hpp"
-#include "generator.hpp"
 #include "roomgen.hpp"
 
 #include <algorithm>
@@ -54,25 +53,23 @@ bool Game::loadProcedural(unsigned int seed, int width, int height, Difficulty d
     params.model = wfcModel();
     const auto started = std::chrono::steady_clock::now();
     const roomgen::Result gen =
-        roomgen::generateRated(params, seed, difficulty, rated ? difficulty::kTries : 1);
+        roomgen::generateRated(params, seed, difficulty, rated ? difficulty::kTries : 1, rated);
     const double ms = std::chrono::duration<double, std::milli>(
                           std::chrono::steady_clock::now() - started).count();
     Level next;
-    if (!gen.canvas.toLevel(next, "generated " + std::to_string(seed))) {
-        std::fprintf(stderr, "[gen] seed %u: room generator failed, using the random walk\n", seed);
-        loadLevel(LevelGenerator::generateRandom(seed));
-        rememberSeed(seed, width, height, difficulty, rated);
-        return true;
+    if (!gen.verified || !gen.canvas.toLevel(next, "generated " + std::to_string(seed))) {
+        std::fprintf(stderr, "[gen] seed %u: room generator failed\n", seed);
+        return false;
     }
     std::printf("[gen] seed %u, %dx%d, %s: %zu rooms (%d by WFC), %s walls, %s after %d attempt(s), "
-                "%zu moves, score %d (%s; cover %d, spikes %d.%02d per 100 cells, naive loses "
-                "%d%%), %d of %d tries, %.1f ms\n",
+                "%zu moves, score %d (%s; cover %d, spikes %d.%02d per 100 cells, naive leaves "
+                "%d.%d%%), %d of %d tries, tuned %+d spikes, %.1f ms\n",
                 seed, width, height, rated ? difficulty::name(difficulty) : "medium, unrated",
                 gen.rooms.size(), gen.wfcRooms, roomgen::wallsName(gen.walls),
                 gen.verified ? "verified" : "NOT verified", gen.attempts, gen.solution.size(),
                 gen.rating.score, difficulty::name(difficulty::band(gen.rating.score)),
                 gen.rating.cover, gen.rating.spikes / 100, gen.rating.spikes % 100,
-                gen.rating.naive, gen.tries, rated ? difficulty::kTries : 1, ms);
+                gen.rating.naive / 10, gen.rating.naive % 10, gen.tries, rated ? difficulty::kTries : 1, gen.tuned, ms);
     loadLevel(next, gen.solution);
     rememberSeed(seed, width, height, difficulty, rated);
     genRating_ = gen.rating;

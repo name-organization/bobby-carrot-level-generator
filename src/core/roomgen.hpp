@@ -95,6 +95,7 @@ struct Result {
     bool spikesRepaired = false;  ///< Initial spikes had to be removed to preserve a win.
     difficulty::Rating rating;    ///< Populated by generateRated().
     int tries = 1;                ///< Candidates built by generateRated().
+    int tuned = 0;                ///< Spikes added (+) or removed (-) while tuning difficulty.
 };
 
 /**
@@ -111,11 +112,12 @@ Result generate(const Params& params, std::uint32_t seed);
  * @param params Parameters normally obtained from Params::forSize().
  * @param seed Request seed; later candidates use difficulty::trySeed().
  * @param difficulty Desired score band.
- * @param tries Maximum candidates; one preserves the result of generate().
- * @return First candidate in the band, or the closest candidate built.
+ * @param tries Maximum candidates; one with tune=false preserves generate().
+ * @param tune Adjust spikes in the closest candidate if it misses the requested band.
+ * @return First candidate in the band, or the closest candidate after optional tuning.
  */
 Result generateRated(const Params& params, std::uint32_t seed, Difficulty difficulty,
-                     int tries = difficulty::kTries);
+                     int tries = difficulty::kTries, bool tune = true);
 
 const char* wallsName(Walls walls);
 bool parseWalls(std::string_view text, Walls& out);
