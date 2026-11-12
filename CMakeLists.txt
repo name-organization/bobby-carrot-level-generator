@@ -116,5 +116,14 @@ if(NOT EMSCRIPTEN)
                  COMMAND gen_bench --count 200 -q --assets "${CMAKE_SOURCE_DIR}/assets/v1")
         add_test(NAME generated_big_levels_winnable
                  COMMAND gen_bench --count 50 -q --size 32x32 --assets "${CMAKE_SOURCE_DIR}/assets/v1")
+        # as the game generates them: requested difficulty, all cell types, no spike rows
+        foreach(difficulty easy medium hard)
+            add_test(NAME generated_levels_${difficulty}
+                     COMMAND gen_bench --count 40 -q --difficulty ${difficulty}
+                             --assets "${CMAKE_SOURCE_DIR}/assets/v1")
+            add_test(NAME generated_big_levels_${difficulty}
+                     COMMAND gen_bench --count 15 -q --size 32x32 --difficulty ${difficulty}
+                             --assets "${CMAKE_SOURCE_DIR}/assets/v1")
+        endforeach()
     endif()
 endif()

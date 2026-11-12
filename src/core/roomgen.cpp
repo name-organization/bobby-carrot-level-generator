@@ -675,6 +675,31 @@ bool build(const Params& p, Walls walls, Rng& rng, Result& out) {
         c.at(cell.x, cell.y) = T_CARROT;
     }
 
+    // Every level shows a fence. Without one, the wall between two neighbouring rooms becomes
+    // a fence along one room: walls stay walls, so the routes and the difficulty do not change.
+    if (std::none_of(c.cells.begin(), c.cells.end(), isFence)) {
+        std::vector<std::vector<Coord>> walls;
+        for (const Room& a : rooms) {
+            for (int k : {1, 2}) {  // east and south: every pair once
+                const int sx = a.sx + kDX[k], sy = a.sy + kDY[k];
+                if (!usedAt(sx, sy)) continue;
+                const Room& b = rooms[static_cast<std::size_t>(slotRoom[g.index(sx, sy)])];
+                std::vector<Coord> line;
+                if (k == 1) {
+                    for (int y = std::max(a.y0, b.y0); y <= std::min(a.y1, b.y1); ++y)
+                        if (isHedge(c.at(a.x1 + 1, y))) line.push_back({a.x1 + 1, y});
+                } else {
+                    for (int x = std::max(a.x0, b.x0); x <= std::min(a.x1, b.x1); ++x)
+                        if (isHedge(c.at(x, a.y1 + 1))) line.push_back({x, a.y1 + 1});
+                }
+                if (line.size() >= 2) walls.push_back(std::move(line));
+            }
+        }
+        if (walls.empty()) return false;  // no wall to fence: try another layout
+        for (Coord cell : walls[static_cast<std::size_t>(rng.range(0, static_cast<int>(walls.size()) - 1))])
+            c.at(cell.x, cell.y) = T_FENCE_VV;
+    }
+
     autotile(c);
     return true;
 }
@@ -717,6 +742,10 @@ hint::Result placeSpikes(Level& level, const std::vector<Door>& doors, Rng& rng,
     for (const std::vector<Coord>* group : {&doorSpikes, &roomSpikes}) {
         for (Coord cell : *group) {
             g.at(cell) = T_CRACKED;
+            if (inSpikeRow(g, cell)) {  // a row along a wall only imitates the wall
+                g.at(cell) = T_GROUND;
+                continue;
+            }
             if (!stillWinnable(g, level.start, reference, reroutes, best)) {
                 g.at(cell) = T_GROUND;
                 ++dropped;
@@ -795,6 +824,10 @@ void addSpikes(Result& res, int target, const wfc::Model* model, int maxUnknown,
         const std::uint8_t old = g.at(cell);
         if (old == T_CARROT && carrots <= 1) continue;  // keep it a carrot level
         g.at(cell) = T_CRACKED;
+        if (inSpikeRow(g, cell)) {
+            g.at(cell) = old;
+            continue;
+        }
         if (model) {
             // Reject spikes that introduce too many unknown learned-pattern windows.
             Canvas view = Canvas::fromLevel(level);
@@ -816,6 +849,40 @@ void addSpikes(Result& res, int target, const wfc::Model* model, int maxUnknown,
     res.canvas = Canvas::fromGrid(g);
 }
 
+constexpr int kSpikeTries = 30;  // cells tried for the one spike every level must show
+
+/**
+ * @brief Give a spike-free level one spike, in spikePool() order, keeping the verified win.
+ * @return False when no cell keeps the level winnable.
+ */
+bool ensureSpike(Result& res, int& reroutes, Rng& rng) {
+    Level level;
+    if (!res.canvas.toLevel(level)) return false;
+    Grid& g = level.grid;
+    if (countTiles(g, T_CRACKED) > 0) return true;
+    std::vector<char> tried(Grid::kCells, 0);
+    std::vector<Coord> reference = hint::cellsAlong(level.start, res.solution);
+    int tries = 0;
+    for (Coord cell : spikePool(g, rng)) {
+        if (tries >= kSpikeTries) break;
+        const int i = cell.index();
+        if (tried[static_cast<std::size_t>(i)]) continue;
+        tried[static_cast<std::size_t>(i)] = 1;
+        const std::uint8_t old = g.at(cell);
+        if (old == T_CARROT && level.carrotTotal <= 1) continue;  // keep it a carrot level
+        g.at(cell) = T_CRACKED;
+        ++tries;
+        hint::Result h;
+        if (stillWinnable(g, level.start, reference, reroutes, h)) {
+            res.canvas = Canvas::fromGrid(g);
+            res.solution = h.moves;
+            return true;
+        }
+        g.at(cell) = old;
+    }
+    return false;
+}
+
 // --- 7. tuning to the difficulty -----------------------------------------------
 // The score (difficulty.hpp) moves mostly with the spikes, and the spikes are
 // the last thing a level gets. So a level that missed its band is moved into
@@ -828,9 +895,11 @@ void addSpikes(Result& res, int target, const wfc::Model* model, int maxUnknown,
 //
 // The level is rated again after every spike, and a spike that moves the
 // score away from the band is put back (the naive player's measure is noisy:
-// one spike more can make it lose less). It stops in the band or after
-// kTuneSteps ratings, and keeps the closest level, the fewest changes winning
-// a tie.
+// one spike more can make it lose less). It stops in the band, after
+// kTuneSteps ratings or after kTuneChecks winnability checks, and keeps the
+// closest level, the fewest changes winning a tie. Added spikes never form a
+// row along a wall (inSpikeRow), and the last spike is never taken out: every
+// level keeps all seven cell types.
 //
 // addSpikes has already taken nearly every cell where a spike keeps the look
 // of the originals (wfc::unknownWindows, Params::spikeUnknownWindows): on
@@ -841,6 +910,11 @@ void addSpikes(Result& res, int target, const wfc::Model* model, int maxUnknown,
 // Its own random numbers, from the seed: the level up to here is what it
 // always was, and the same seed tunes it the same way.
 constexpr int kTuneSteps = 24;
+// Winnability checks one tuning may spend on candidate spikes; a count, not a clock, so the
+// same seed tunes the same way everywhere and big maps stay fast.
+constexpr int kTuneChecks = 60;
+// A candidate farther than this from its band is not tuned: another candidate is cheaper.
+constexpr int kTuneReach = 12;
 
 void tuneToBand(Result& res, Difficulty difficulty, const wfc::Model* model, int maxUnknown) {
     Level level;
@@ -872,7 +946,8 @@ void tuneToBand(Result& res, Difficulty difficulty, const wfc::Model* model, int
         }
         return true;
     };
-    auto done = [&] { return bestOff == 0 || steps >= kTuneSteps; };
+    int checks = 0;
+    auto done = [&] { return bestOff == 0 || steps >= kTuneSteps || checks >= kTuneChecks; };
 
     if (res.rating.score < difficulty::bandLow(difficulty)) {
         int reroutes = kReroutes;
@@ -890,11 +965,17 @@ void tuneToBand(Result& res, Difficulty difficulty, const wfc::Model* model, int
                 const std::uint8_t old = g.at(cell);
                 if (old == T_CARROT && level.carrotTotal <= 1) continue;  // keep it a carrot level
                 g.at(cell) = T_CRACKED;
+                if (inSpikeRow(g, cell)) {
+                    g.at(cell) = old;
+                    settled[i] = 1;
+                    continue;
+                }
                 if (!looksOriginal(level, cell, model, limit)) {
                     g.at(cell) = old;  // perhaps with a higher limit
                     continue;
                 }
                 settled[i] = 1;
+                ++checks;
                 const std::vector<Coord> before = reference;
                 hint::Result h;
                 if (!stillWinnable(g, level.start, reference, reroutes, h)) {
@@ -920,12 +1001,15 @@ void tuneToBand(Result& res, Difficulty difficulty, const wfc::Model* model, int
             for (int x = 0; x < g.w; ++x)
                 if (g.at(x, y) == T_CRACKED) spikes.push_back({x, y});
         rng.shuffle(spikes);
+        int left = static_cast<int>(spikes.size());
         for (Coord cell : spikes) {
-            if (done()) break;
+            if (done() || left <= 1) break;  // every level keeps at least one spike
             g.at(cell) = T_GROUND;
+            --left;
             --change;
             if (!keep()) {
                 g.at(cell) = T_CRACKED;
+                ++left;
                 ++change;
             }
         }
@@ -938,7 +1022,57 @@ void tuneToBand(Result& res, Difficulty difficulty, const wfc::Model* model, int
     markSpikeDoors(res);
 }
 
+/** @brief Wall, or off the map. */
+bool solidAt(const Grid& g, int x, int y) {
+    return !g.inBounds(x, y) || g.at(x, y) < T_FIRST_WALKABLE;
+}
+
+/** @brief A wall on side k and open floor on the opposite side. */
+bool hugs(const Grid& g, Coord c, int k) {
+    return solidAt(g, c.x + kDX[k], c.y + kDY[k]) && !solidAt(g, c.x - kDX[k], c.y - kDY[k]);
+}
+
+// Candidates only rated before generateRated() starts tuning them.
+constexpr int kUntunedTries = 3;
+
 }  // namespace
+
+bool hasAllCellTypes(const Grid& g) {
+    bool path = false, hedge = false, fence = false, carrot = false, spike = false;
+    bool start = false, exit = false;
+    for (int y = 0; y < g.h; ++y) {
+        for (int x = 0; x < g.w; ++x) {
+            const std::uint8_t t = g.at(x, y);
+            path |= t == T_GROUND;
+            hedge |= isHedge(t);
+            fence |= isFence(t);
+            carrot |= t == T_CARROT;
+            spike |= t == T_CRACKED;
+            start |= t == T_START;
+            exit |= t == T_EXIT;
+        }
+    }
+    return path && hedge && fence && carrot && spike && start && exit;
+}
+
+bool inSpikeRow(const Grid& g, Coord c) {
+    for (int k = 0; k < 4; ++k) {
+        if (!hugs(g, c, k)) continue;
+        for (int side : {(k + 1) % 4, (k + 3) % 4}) {  // along the wall
+            const Coord n{c.x + kDX[side], c.y + kDY[side]};
+            if (g.inBounds(n.x, n.y) && g.at(n) == T_CRACKED && hugs(g, n, k)) return true;
+        }
+    }
+    return false;
+}
+
+int spikeRowCells(const Grid& g) {
+    int n = 0;
+    for (int y = 0; y < g.h; ++y)
+        for (int x = 0; x < g.w; ++x)
+            if (g.at(x, y) == T_CRACKED && inSpikeRow(g, {x, y})) ++n;
+    return n;
+}
 
 Result generate(const Params& params, std::uint32_t seed) {
     Params p = params;
@@ -976,6 +1110,11 @@ Result generate(const Params& params, std::uint32_t seed) {
             res.verified = true;
             addSpikes(res, p.spikeTarget, p.model && !p.model->empty() ? p.model : nullptr,
                       p.spikeUnknownWindows, reroutes, rng);
+            // every level shows spikes; a layout where none fits is replaced
+            if (!ensureSpike(res, reroutes, rng)) {
+                last = std::move(res);
+                continue;
+            }
             markSpikeDoors(res);
             return res;
         }
@@ -986,10 +1125,17 @@ Result generate(const Params& params, std::uint32_t seed) {
 
 Result generateRated(const Params& params, std::uint32_t seed, Difficulty difficulty,
                      int tries, bool tune) {
+    const wfc::Model* model = params.model && !params.model->empty() ? params.model : nullptr;
     Result best;
     int bestOff = -1;  // how far the best score is from the band, -1 before the first
     int built = 0;
-    for (int k = 0; k < std::max(1, tries); ++k) {
+    auto consider = [&](Result& res, int off) {
+        if (bestOff < 0 || off < bestOff) {
+            best = std::move(res);
+            bestOff = off;
+        }
+    };
+    for (int k = 0; k < std::max(1, tries) && bestOff != 0; ++k) {
         ++built;
         Result res = generate(params, difficulty::trySeed(seed, k));
         Level level;
@@ -998,17 +1144,20 @@ Result generateRated(const Params& params, std::uint32_t seed, Difficulty diffic
             res.rating = difficulty::rate(level, res.solution, res.seed);
             off = difficulty::distanceToBand(res.rating.score, difficulty);
         }
-        if (bestOff < 0 || off < bestOff) {
-            best = std::move(res);
-            bestOff = off;
+        // --- 7. tuning -------------------------------------------------------
+        // The first candidates are only rated; then the closest one is tuned, and after it
+        // every new candidate that misses the band, until one lands in it.
+        if (tune && off > 0 && off <= kTuneReach && k >= kUntunedTries) {
+            tuneToBand(res, difficulty, model, params.spikeUnknownWindows);
+            off = difficulty::distanceToBand(res.rating.score, difficulty);
         }
-        if (bestOff == 0) break;
+        consider(res, off);
+        if (tune && bestOff > 0 && bestOff <= kTuneReach && k + 1 == std::min(kUntunedTries, tries)) {
+            tuneToBand(best, difficulty, model, params.spikeUnknownWindows);
+            bestOff = difficulty::distanceToBand(best.rating.score, difficulty);
+        }
     }
     best.tries = built;
-    // --- 7. tuning -----------------------------------------------------------
-    if (tune && bestOff > 0)
-        tuneToBand(best, difficulty, params.model && !params.model->empty() ? params.model : nullptr,
-                   params.spikeUnknownWindows);
     return best;
 }
 
@@ -1043,6 +1192,7 @@ Params Params::forSize(int width, int height, Difficulty difficulty) {
             p.spikeDoorChance = 1.0;
             p.loopChance = 0.3;
             p.spikeTarget *= 2;
+            p.spikeUnknownWindows = 4;  // more spikes may break the look of the originals a little
             break;
     }
     return p;
