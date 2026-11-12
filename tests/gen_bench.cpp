@@ -11,12 +11,16 @@
  *   --size WxH     map size (16x16), with the defaults roomgen::Params::forSize
  *                  picks for it; a map over 32x32 is printed but not verified,
  *                  the engine plays up to 32x32
+ *   --difficulty D easy | medium | hard: generate as the game does
+ *                  (roomgen::generateRated, with tuning) and require every level
+ *                  to land in that band; without it, roomgen::generate with the
+ *                  medium parameters
  *   --room R       room interior, cells per side (4 on 16x16)
  *   --walls W      auto | fence | thin | hedge (auto)
  *   --fill F  --main F  --spikes F  --loops F  --merge F  --inset F  --empty F
  *                  the chances in roomgen::Params
  *   --spike-target N   spikes a level should end up with (roomgen::Params::spikeTarget)
- *   --spike-unknown N  unknown 3x3 windows an added spike may cause (2)
+ *   --spike-unknown N  unknown 3x3 windows an added spike may cause (2; 4 on hard)
  *   --content C    wfc | patterns -- how rooms are filled (wfc)
  *   --hedge P      weight of hedge inside rooms for WFC, percent (5)
  *   --carrot P     weight of carrots inside rooms for WFC, percent (700)
@@ -31,6 +35,10 @@
  *   --assets DIR   asset root with the original levels (assets/v1)
  *   --out DIR      also write every playable level to DIR/gen_<seed>.lvl
  *   -q             summary only
+ *
+ * Every playable level must also show all seven base cell types, have no row of
+ * spikes along a wall (roomgen::inSpikeRow) and keep the wall sprites autotile()
+ * picks; the exit code is 1 otherwise.
  *
  * "patterns" is the share of 3x3 windows of a map that also occur somewhere in
  * the original carrot levels: 100% means every local detail has a precedent.
@@ -69,6 +77,8 @@ struct Options {
     bool quiet = false;
     bool wfc = true;
     bool holdout = false;
+    bool rated = false;  ///< --difficulty given
+    Difficulty difficulty = Difficulty::Medium;
 };
 
 [[noreturn]] void usage(const char* error) {
@@ -79,13 +89,17 @@ struct Options {
 
 Options parse(int argc, char** argv) {
     Options o;
-    // --size picks the defaults for that size (roomgen::Params::forSize), so
-    // it goes first; every other option overrides them wherever it stands.
+    // --size and --difficulty pick the defaults (roomgen::Params::forSize), so
+    // they go first; every other option overrides them wherever it stands.
+    int w = Grid::kClassic, h = Grid::kClassic;
     for (int i = 1; i + 1 < argc; ++i) {
-        int w = 0, h = 0;
-        if (std::string(argv[i]) == "--size" && std::sscanf(argv[i + 1], "%dx%d", &w, &h) == 2)
-            o.params = roomgen::Params::forSize(w, h);
+        if (std::string(argv[i]) == "--size") std::sscanf(argv[i + 1], "%dx%d", &w, &h);
+        if (std::string(argv[i]) == "--difficulty") {
+            if (!difficulty::parse(argv[i + 1], o.difficulty)) usage("--difficulty: easy|medium|hard");
+            o.rated = true;
+        }
     }
+    o.params = roomgen::Params::forSize(w, h, o.difficulty);
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
         auto value = [&]() -> std::string {
@@ -100,6 +114,7 @@ Options parse(int argc, char** argv) {
             if (std::sscanf(v.c_str(), "%dx%d", &o.params.width, &o.params.height) != 2)
                 usage("--size wants WxH, e.g. 16x16");
         }
+        else if (a == "--difficulty") value();  // read above
         else if (a == "--room") o.params.roomSize = std::atoi(value().c_str());
         else if (a == "--walls") {
             if (!roomgen::parseWalls(value(), o.params.walls)) usage("--walls: auto|fence|thin|hedge");
@@ -333,6 +348,7 @@ int main(int argc, char** argv) {
     Stat naiveLoses;  // per level: share of naive tries lost
     int naiveNeverLoses = 0;
     int wfcRooms = 0, allRooms = 0, repaired = 0;
+    int allTypes = 0, rowLevels = 0, spritesKept = 0, inBand = 0, playableLevels = 0;
     double attempts = 0, totalMs = 0, moves = 0;
 
     for (int k = 0; k < o.count; ++k) {
@@ -343,7 +359,8 @@ int main(int argc, char** argv) {
         std::vector<Dir> solution;
         bool ok = false;
         std::string about;
-        const roomgen::Result r = roomgen::generate(run.params, seed);
+        const roomgen::Result r = o.rated ? roomgen::generateRated(run.params, seed, o.difficulty)
+                                          : roomgen::generate(run.params, seed);
         canvas = r.canvas;
         solution = r.solution;
         ok = r.verified;
@@ -387,6 +404,25 @@ int main(int argc, char** argv) {
         if (asLevel && ok) replayed = replay(level, solution);
         verified += ok;
         won += replayed;
+        if (asLevel) {
+            ++playableLevels;
+            const bool types = roomgen::hasAllCellTypes(level.grid);
+            const int rows = roomgen::spikeRowCells(level.grid);
+            Canvas sprites = canvas;
+            autotile(sprites);
+            const bool kept = sprites.cells == canvas.cells;
+            allTypes += types;
+            rowLevels += rows > 0;
+            spritesKept += kept;
+            if (!types) std::printf("seed %u: not all seven cell types\n", seed);
+            if (rows) std::printf("seed %u: %d spikes in rows along walls\n", seed, rows);
+            if (!kept) std::printf("seed %u: wall sprites differ from autotile()\n", seed);
+        }
+        if (o.rated && ok) {
+            const bool hit = difficulty::band(r.rating.score) == o.difficulty;
+            inBand += hit;
+            if (!hit) std::printf("seed %u: score %d is not %s\n", seed, r.rating.score, difficulty::name(o.difficulty));
+        }
         if (asLevel && ok) {
             const double lost = naiveLossRate(level, seed);
             naiveLoses.add(lost);
@@ -467,6 +503,16 @@ int main(int argc, char** argv) {
         std::printf("\n");
     }
     checkAutotile(o.assets);
+    if (playable) {
+        std::printf("all seven cell types %d/%d, spike rows along walls in %d levels, wall sprites "
+                    "as autotile() picks %d/%d",
+                    allTypes, playableLevels, rowLevels, spritesKept, playableLevels);
+        if (o.rated) std::printf(", %s band %d/%d", difficulty::name(o.difficulty), inBand, verified);
+        std::printf("\n");
+    }
 
-    return playable && (verified != o.count || won != o.count || roundTrips != o.count) ? 1 : 0;
+    const bool quality = allTypes == playableLevels && rowLevels == 0 &&
+                         spritesKept == playableLevels && (!o.rated || inBand == verified);
+    return playable && (verified != o.count || won != o.count || roundTrips != o.count || !quality)
+               ? 1 : 0;
 }

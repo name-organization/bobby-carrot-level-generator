@@ -55,7 +55,8 @@ struct Params {
      * @brief Select room size, content weights and spike target for a map size.
      * @param width Requested map width.
      * @param height Requested map height.
-     * @param difficulty Controls fill, spike doors, spike target and cycle probability.
+     * @param difficulty Controls fill, spike doors, spike target, cycle probability and, on
+     * Hard, the unknown 3x3 windows an added spike may cause.
      * @return Parameters for the requested size and difficulty.
      * @note Medium defaults preserve the levels produced by legacy seed links.
      */
@@ -99,7 +100,27 @@ struct Result {
 };
 
 /**
+ * @brief Check that a map shows all seven base cell types.
+ * @details Path, hedge, fence, carrot, spikes, start and exit each occur at least once.
+ */
+bool hasAllCellTypes(const Grid& grid);
+
+/**
+ * @brief Check whether a spike at the cell would be part of a row of spikes along a wall.
+ * @details Two side-by-side spikes hugging the same wall (wall on one side, open floor on the
+ * other) line the edge of a room: they are walked around and only imitate the wall. Door and
+ * corridor spikes, walled on both sides, and diagonal spike patterns never count.
+ */
+bool inSpikeRow(const Grid& grid, Coord cell);
+
+/** @brief Count spikes that are part of a row along a wall. */
+int spikeRowCells(const Grid& grid);
+
+/**
  * @brief Generate connected rooms, fill content and verify spikes incrementally.
+ * @details Every verified level shows all seven cell types (a wall between two rooms turns
+ * into a fence when there is none, and a spike-free level gets one spike) and no row of spikes
+ * along a wall (inSpikeRow()); a layout that cannot meet this is replaced by the next attempt.
  * @param params Layout and search configuration.
  * @param seed Deterministic seed; the same parameters and seed reproduce the level.
  * @return Last attempted layout, with verified and solution set when a win is found.
@@ -113,8 +134,10 @@ Result generate(const Params& params, std::uint32_t seed);
  * @param seed Request seed; later candidates use difficulty::trySeed().
  * @param difficulty Desired score band.
  * @param tries Maximum candidates; one with tune=false preserves generate().
- * @param tune Adjust spikes in the closest candidate if it misses the requested band.
+ * @param tune Adjust spikes in a candidate that misses the requested band.
  * @return First candidate in the band, or the closest candidate after optional tuning.
+ * @details The first kUntunedTries candidates are only rated; then the closest one is tuned;
+ * if it still misses, every further candidate is tuned until one lands in the band.
  */
 Result generateRated(const Params& params, std::uint32_t seed, Difficulty difficulty,
                      int tries = difficulty::kTries, bool tune = true);

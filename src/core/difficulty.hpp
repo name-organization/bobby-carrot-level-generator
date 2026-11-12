@@ -26,7 +26,7 @@ constexpr int kHardFrom = 62;    ///< score where Hard starts
 constexpr int kNaiveTries = 40;
 constexpr int kNaiveRandomPercent = 5;  ///< Steps the naive player takes at random.
 /** @brief Maximum candidates per request; the first uses the original seed. */
-constexpr int kTries = 3;
+constexpr int kTries = 10;
 
 struct Rating {
     int cover = 0;   ///< moves per 100 walkable cells
