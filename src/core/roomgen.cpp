@@ -32,12 +32,14 @@ struct Geometry {
     bool inSlots(int sx, int sy) const { return sx >= 0 && sx < nx && sy >= 0 && sy < ny; }
 };
 
-// Slots that fit across `size` cells, keeping at least one hedge cell on each
-// side for the island border.
+/** @brief Count room slots while reserving one hedge cell along each map edge. */
 int slotsAcross(int size, int r, int t) { return std::max(0, (size - 2 + t) / (r + t)); }
 
-// Randomised depth-first search for a self-avoiding path of `want` slots.
-// Returns the longest path found if no path that long exists.
+/**
+ * @brief Find a self-avoiding slot path using randomized DFS.
+ *
+ * @return Requested length, or the longest path found within the search budget.
+ */
 std::vector<int> randomPath(const Geometry& g, int startSlot, int want, Rng& rng) {
     std::vector<char> used(static_cast<std::size_t>(g.nx * g.ny), 0);
     auto options = [&](int slot) {
@@ -78,7 +80,6 @@ std::vector<int> randomPath(const Geometry& g, int startSlot, int want, Rng& rng
 enum class Pattern { None, Field, InnerField, Rows, Checker, Pillar, Scatter };
 
 Pattern pickPattern(Rng& rng) {
-    // weights: Field 2, InnerField 3, Rows 2, Checker 1, Pillar 2, Scatter 1
     const int r = rng.range(0, 10);
     if (r < 2) return Pattern::Field;
     if (r < 5) return Pattern::InnerField;
@@ -92,7 +93,7 @@ void carrot(Canvas& c, int x, int y) {
     if (c.at(x, y) == T_GROUND) c.at(x, y) = T_CARROT;
 }
 
-// Every walkable interior cell of the room reachable from every other one.
+/** @brief Check connectivity of all non-hedge cells inside a fixed-pattern room. */
 bool roomConnected(const Canvas& c, const Room& room) {
     const int w = room.x1 - room.x0 + 1, h = room.y1 - room.y0 + 1;
     std::vector<char> seen(static_cast<std::size_t>(w * h), 0);
@@ -125,8 +126,7 @@ bool roomConnected(const Canvas& c, const Room& room) {
     return reached == open;
 }
 
-// Fills one room. `entry` marks cells a pillar must not take: where doors come
-// in, the start and the exit.
+/** @brief Fill a room with a fixed pattern while preserving entry anchors. */
 void fillRoom(Canvas& c, const Room& room, Pattern pattern, const std::vector<char>& entry,
               Rng& rng) {
     const int w = room.x1 - room.x0 + 1, h = room.y1 - room.y0 + 1;
@@ -170,8 +170,7 @@ void fillRoom(Canvas& c, const Room& room, Pattern pattern, const std::vector<ch
                 fillRoom(c, room, Pattern::Field, entry, rng);
                 break;
             }
-            // a 2x2 block in a big room, a single bush otherwise; centred, with
-            // a coin flip for the side when the room is even
+
             const int size = (w >= 4 && h >= 4 && rng.chance(0.5)) ? 2 : 1;
             const int px = room.x0 + (w - size) / 2 + ((w - size) % 2 ? rng.range(0, 1) : 0);
             const int py = room.y0 + (h - size) / 2 + ((h - size) % 2 ? rng.range(0, 1) : 0);
@@ -199,26 +198,24 @@ void fillRoom(Canvas& c, const Room& room, Pattern pattern, const std::vector<ch
     }
 }
 
-// --- 3b. content by wave function collapse ------------------------------------
-
 constexpr int kWholeMapTries = 2;
 
-// SAT conflicts per solver run while generating. A run past the budget
-// answers "unknown", which the generator treats as "cannot win": the spike
-// being tried is dropped. Far below what a hint may spend (400000), since a
-// level asks the solver dozens of times.
+// Reject candidates exceeding this conflict budget; generation invokes SAT repeatedly.
 constexpr long long kGenerationConflicts = 20000;
 
-// When a new spike breaks the current solution, the solver may look for
-// another way round it -- but on a 32x32 map one such search can take a few
-// hundred milliseconds, so a level gets only this many, with a smaller budget.
-// The limit is a count, not a time, so that a seed still gives the same level
-// on every machine. Past it, a spike that breaks the solution is left out.
+// Count reroutes instead of timing them to preserve seeded results across machines.
 constexpr int kReroutes = 4;
 constexpr long long kRerouteConflicts = 5000;
 
-// Is the level still winnable with the spike just placed? `reference` is the
-// current solution; on success it becomes the new one.
+/**
+ * @brief Check a newly placed spike against the current solution, then bounded SAT.
+ *
+ * @param g Grid containing the candidate spike.
+ * @param start Starting cell of the current solution.
+ * @param[in,out] reference Updated to the winning route on success.
+ * @param[in,out] reroutes Remaining SAT reroutes; cheap reference checks do not consume it.
+ * @param[out] out Winning moves on success.
+ */
 bool stillWinnable(const Grid& g, Coord start, std::vector<Coord>& reference, int& reroutes,
                    hint::Result& out) {
     hint::Options cheap;
@@ -242,8 +239,7 @@ wfc::Symbol lowestSymbol(wfc::Mask m) {
     return wfc::Hedge;
 }
 
-// Is every walkable cell of the room (x0..x1, y0..y1 inside the solved
-// region) reachable from every door, the start and the exit?
+/** @brief Check whether all walkable interior cells connect to the entry anchors. */
 bool regionConnected(const wfc::Region& region, const std::vector<char>& anchor, int x0, int y0,
                      int x1, int y1) {
     const int w = region.w;
@@ -272,17 +268,13 @@ bool regionConnected(const wfc::Region& region, const std::vector<char>& anchor,
     return true;
 }
 
-// Fills every room with wave function collapse (wfc.hpp), one room at a time,
-// each together with its ring of walls so that the walls are part of the
-// pattern, and with `context` - 1 more cells around it that only constrain.
-// A ring cell decided for one room stays fixed for the next. A room WFC cannot
-// fill in `tries` tries of `nodeBudget` nodes each is left plain and marked in
-// `byPattern`, so that the fixed patterns take over there.
-//
-// What the layout pins down: doors stay as they are, the cells where they
-// come in stay walkable, start and exit stay path, a merged wall stays open,
-// and a one-cell wall between two rooms may be hedge or fence when the level
-// has fence walls. Everything else inside a room is free.
+/**
+ * @brief Fill rooms and their wall rings with WFC, falling back to fixed patterns.
+ *
+ * @details Pin doors, entry anchors, start, exit and merged walls. A wall ring
+ * committed by one room constrains the next. Context beyond the ring is read-only.
+ * The byPattern output marks rooms requiring fixed-pattern content.
+ */
 void fillWithWfc(const wfc::Model& model, const std::array<int, wfc::kSymbols>& percent,
                  bool whole, int context, int tries, int nodeBudget, Canvas& c,
                  const std::vector<Room>& rooms, bool fenceWalls, int wallThickness,
@@ -330,11 +322,7 @@ void fillWithWfc(const wfc::Model& model, const std::array<int, wfc::kSymbols>& 
         }
     }
 
-    // First the whole map in one go: every wall is then chosen knowing both
-    // rooms it separates. Room by room, a wall decided for one room often
-    // leaves the next with no learned window that fits. A search node here
-    // copies the state of the whole map, so this run gets few tries and the
-    // per-room budget; a map that needs more goes room by room, which is fast.
+    // Whole-map search chooses shared walls jointly; fall back to bounded per-room runs.
     bool wholeDone = false;
     if (whole) {
         for (int attempt = 0; attempt < std::min(tries, kWholeMapTries) && !wholeDone; ++attempt) {
@@ -357,10 +345,7 @@ void fillWithWfc(const wfc::Model& model, const std::array<int, wfc::kSymbols>& 
 
     for (std::size_t r = 0; r < rooms.size() && !wholeDone; ++r) {
         const Room& room = rooms[r];
-        // The region is the room, its ring of walls and `context - 1` more
-        // cells, clipped to the map. Only the room and its ring are written
-        // back; the cells beyond only take part in the windows, so that what
-        // a neighbouring room already has beyond the wall is respected.
+        // Only the room and its wall ring are written back; extra context constrains patterns.
         const int rx0 = std::max(0, room.x0 - context), ry0 = std::max(0, room.y0 - context);
         const int rx1 = std::min(c.w - 1, room.x1 + context);
         const int ry1 = std::min(c.h - 1, room.y1 + context);
@@ -420,8 +405,7 @@ void fillWithWfc(const wfc::Model& model, const std::array<int, wfc::kSymbols>& 
                 for (int x = room.x0; x <= room.x1; ++x) dom[index(x, y)] = bit(Path);
     }
 
-    // cells no room decided (a ring cell of a room that fell back) become
-    // hedge where they may, otherwise the first symbol they allow
+    // Resolve unassigned fallback rings, preferring hedge where the mask allows it.
     for (std::size_t i = 0; i < n; ++i) {
         const Mask m = dom[i];
         const Symbol s = (m & (m - 1)) == 0 ? lowestSymbol(m) : ((m & bit(Hedge)) ? Hedge : lowestSymbol(m));
@@ -429,7 +413,7 @@ void fillWithWfc(const wfc::Model& model, const std::array<int, wfc::kSymbols>& 
     }
 }
 
-// One layout attempt. False when the parameters leave no room slot at all.
+/** @brief Build one layout; return false when geometry cannot connect its rooms. */
 bool build(const Params& p, Walls walls, Rng& rng, Result& out) {
     Geometry g;
     g.r = p.roomSize;
@@ -444,9 +428,8 @@ bool build(const Params& p, Walls walls, Rng& rng, Result& out) {
     out.slotsX = g.nx;
     out.slotsY = g.ny;
 
-    // --- 1. layout ---------------------------------------------------------
     const int slots = g.nx * g.ny;
-    // a 2x2 grid needs all four rooms for a cycle
+
     const int total =
         slots <= 4 && p.loopChance > 0
             ? slots
@@ -497,9 +480,7 @@ bool build(const Params& p, Walls walls, Rng& rng, Result& out) {
         return g.inSlots(sx, sy) && slotRoom[g.index(sx, sy)] != -1;
     };
 
-    // Interiors. A room may give up a cell on one side: on a side facing the
-    // outside always, on a side facing a room only with thick hedge walls (a
-    // fence must stay straight between two rooms).
+    // Only thick hedge walls allow shrinking a room toward its neighbour.
     for (Room& room : rooms) {
         room.x0 = g.slotX(room.sx);
         room.y0 = g.slotY(room.sy);
@@ -555,8 +536,7 @@ bool build(const Params& p, Walls walls, Rng& rng, Result& out) {
         }
     }
 
-    // --- 2. doors ------------------------------------------------------------
-    // the layout tree first, then the doors that close cycles
+    // Tree doors guarantee connectivity; extra doors close cycles.
     std::vector<Door>& doors = out.doors;
     doors.clear();
     for (std::size_t i = 1; i < rooms.size(); ++i) {
@@ -622,7 +602,6 @@ bool build(const Params& p, Walls walls, Rng& rng, Result& out) {
         if (!door.loop) entryOf[static_cast<std::size_t>(door.b)] = aFirst ? hiCell : loCell;
     }
 
-    // --- 3. content ----------------------------------------------------------
     auto cellsOf = [](const Room& room) {
         std::vector<Coord> out;
         for (int y = room.y0; y <= room.y1; ++y)
@@ -694,7 +673,6 @@ bool build(const Params& p, Walls walls, Rng& rng, Result& out) {
         c.at(cell.x, cell.y) = T_CARROT;
     }
 
-    // --- 4. autotile ---------------------------------------------------------
     autotile(c);
     return true;
 }
@@ -703,16 +681,13 @@ int countTiles(const Grid& g, std::uint8_t tile) {
     return static_cast<int>(std::count(g.cells.begin(), g.cells.end(), tile));
 }
 
-// --- 5. spikes, verified --------------------------------------------------------
-// Neither the doors nor WFC know whether their spikes leave a way through, and
-// asking the solver about a level that cannot be won is the expensive question
-// (a proof that no order works). So the spikes are taken out -- the bare
-// layout can always be won -- and put back one at a time, door spikes first
-// (they are the choices between rooms), each checked with the current solution
-// as the hint's reference. If that solution crosses the new spike at most once
-// it still wins and the check costs a walk along it; only when it does not
-// does the solver look for another way (stillWinnable). A spike with no way
-// around it is left out.
+/**
+ * @brief Reinsert initial spikes one at a time, prioritizing doors.
+ *
+ * @details The spike-free layout supplies a winning reference. Keep each spike
+ * only if reference replay or a bounded reroute still wins; avoid repeated
+ * unsatisfiability proofs for the original spike arrangement.
+ */
 hint::Result placeSpikes(Level& level, const std::vector<Door>& doors, Rng& rng, int& dropped,
                          int& reroutes) {
     Grid& g = level.grid;
@@ -748,7 +723,6 @@ hint::Result placeSpikes(Level& level, const std::vector<Door>& doors, Rng& rng,
     return best;
 }
 
-// A door counts as a spike door if any of its cells ended up a spike.
 void markSpikeDoors(Result& res) {
     for (Door& door : res.doors) {
         door.spike = false;
@@ -758,23 +732,18 @@ void markSpikeDoors(Result& res) {
     }
 }
 
-// --- 6. spikes ---------------------------------------------------------------
-// Adds spikes until the level has `target` of them: tries cells in a weighted
-// random order and keeps every spike the solver can still win around; the
-// last solution found becomes the reference.
-//
-// The weights are how often the 30 original carrot levels put a spike on such
-// a cell: 14.7% of corridor cells (open on two opposite sides), 7.5% of
-// corners, 7.8% of cells open on three sides, 6.2% of open floor, and never a
-// dead end.
-//
-// Weighted random order without floating point (which could round differently
-// in the browser): every cell goes in `weight` times, the pool is shuffled,
-// and a cell's first appearance is its place in the order.
+/**
+ * @brief Build a weighted, shuffled pool of candidate spike cells.
+ *
+ * @details Corridor/corner/junction/open-floor weights are 15/7/8/6, inferred
+ * from original levels. Dead ends are excluded; duplicate entries encode weights.
+ */
 std::vector<Coord> spikePool(const Grid& g, Rng& rng) {
     auto walkable = [&](int x, int y) {
         return g.inBounds(x, y) && g.at(x, y) >= T_FIRST_WALKABLE;
     };
+
+    // Repeated entries plus shuffle give a weighted order without platform-dependent rounding.
     std::vector<Coord> pool;
     for (int y = 0; y < g.h; ++y) {
         for (int x = 0; x < g.w; ++x) {
@@ -802,7 +771,7 @@ bool looksOriginal(const Level& level, Coord cell, const wfc::Model* model, int 
     return wfc::unknownWindows(*model, view, cell.x, cell.y) <= maxUnknown;
 }
 
-// Spikes up to `target`, in spikePool's order (see above).
+/** @brief Add spikes toward the target while preserving a verified winning route. */
 void addSpikes(Result& res, int target, const wfc::Model* model, int maxUnknown, int& reroutes,
                Rng& rng) {
     Level level;
@@ -823,9 +792,13 @@ void addSpikes(Result& res, int target, const wfc::Model* model, int maxUnknown,
         const std::uint8_t old = g.at(cell);
         if (old == T_CARROT && carrots <= 1) continue;  // keep it a carrot level
         g.at(cell) = T_CRACKED;
-        if (!looksOriginal(level, cell, model, maxUnknown)) {
-            g.at(cell) = old;
-            continue;
+        if (model) {
+            // Reject spikes that introduce too many unknown learned-pattern windows.
+            Canvas view = Canvas::fromLevel(level);
+            if (wfc::unknownWindows(*model, view, cell.x, cell.y) > maxUnknown) {
+                g.at(cell) = old;
+                continue;
+            }
         }
         ++tries;
         hint::Result h;
@@ -977,7 +950,6 @@ Result generate(const Params& params, std::uint32_t seed) {
     for (int attempt = 1; attempt <= p.attempts; ++attempt) {
         Walls walls = p.walls;
         if (walls == Walls::Auto) {
-            // thin hedge walls are rare in the originals and look the least like them
             const int r = rng.range(0, 9);
             walls = r < 5 ? Walls::Fence : (r < 9 ? Walls::Hedge : Walls::ThinHedge);
         }
@@ -990,7 +962,6 @@ Result generate(const Params& params, std::uint32_t seed) {
             continue;
         }
 
-        // --- 5. verify -------------------------------------------------------
         Level level;
         if (!res.canvas.toLevel(level)) return res;  // bigger than the engine plays
         int dropped = 0, reroutes = kReroutes;

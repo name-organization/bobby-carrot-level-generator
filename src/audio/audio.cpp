@@ -18,10 +18,7 @@ bool Mixer::loadOgg(const std::string& name, const std::string& path) {
         return false;
     }
 
-    // Nearest-neighbour resample to the device rate. The source files are
-    // already 44.1 kHz, so in practice this is a straight copy; the branch
-    // exists so a differently encoded asset cannot play back at the wrong
-    // pitch.
+    // Resample assets to the device rate so alternate encodings retain their pitch.
     const double ratio = static_cast<double>(rate) / kSampleRate;
     const std::size_t outFrames =
         ratio == 1.0 ? static_cast<std::size_t>(frames)
@@ -46,8 +43,7 @@ bool Mixer::loadOgg(const std::string& name, const std::string& path) {
     return true;
 }
 
-// Short swept sine with an exponential decay -- enough to stand in for the
-// handset blips the SMAF files held.
+/** @brief Synthesize a swept sine with exponential decay for SMAF-only effects. */
 void Mixer::synthesise(const std::string& name, float freqStart, float freqEnd,
                        float seconds, float gain) {
     const std::size_t frames = static_cast<std::size_t>(kSampleRate * seconds);
@@ -149,9 +145,7 @@ void Mixer::stopMusic() {
 }
 
 namespace {
-// Ears hear loudness roughly logarithmically: squaring the slider value makes
-// its steps sound about even (50% is about -12 dB) instead of crowding all the
-// change into the bottom of the range.
+// A squared slider response distributes perceived loudness more evenly.
 float sliderToGain(float v) {
     v = std::clamp(v, 0.0f, 1.0f);
     return v * v;

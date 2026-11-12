@@ -1,12 +1,8 @@
-// A map of any size, for the level generator.
-//
-// The engine plays a Grid of up to Grid::kMaxW x Grid::kMaxH (level.hpp); the
-// generator draws on a Canvas, which has no such limit and is stored densely.
-// A Canvas that fits converts to a Level with toLevel().
 #pragma once
 
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "level.hpp"
@@ -15,6 +11,9 @@
 
 namespace bc {
 
+/**
+ * @brief Dense generator canvas without the engine grid size limit.
+ * */
 struct Canvas {
     int w = 0;
     int h = 0;
@@ -36,10 +35,10 @@ struct Canvas {
     std::uint8_t& at(int x, int y)       { return cells[static_cast<std::size_t>(y * w + x)]; }
     std::uint8_t  at(int x, int y) const { return cells[static_cast<std::size_t>(y * w + x)]; }
 
-    // Small enough for the engine to play.
+    /** @brief Check whether the canvas fits in the engine grid. */
     bool fits() const { return w >= 1 && h >= 1 && w <= Grid::kMaxW && h <= Grid::kMaxH; }
 
-    // Rows of tile characters, as in a .lvl file, without the title line.
+    /** @brief Serialize rows of tile characters without a title line. */
     std::string toText() const {
         std::string out;
         out.reserve(static_cast<std::size_t>((w + 1) * h));
@@ -50,7 +49,13 @@ struct Canvas {
         return out;
     }
 
-    // False if the canvas does not fit().
+    /**
+     * @brief Copy the canvas into a playable level and recompute its metadata.
+     *
+     * @param[out] level Receives the level on success; unchanged on failure.
+     * @param name Level title.
+     * @return False when the canvas exceeds the engine dimensions.
+     */
     bool toLevel(Level& level, std::string name = {}) const {
         if (!fits()) return false;
         level = Level{};

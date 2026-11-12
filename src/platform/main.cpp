@@ -10,7 +10,7 @@
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
-#include <emscripten/val.h> 
+#include <emscripten/val.h>
 #else
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "../third_party/stb_image_write.h"
@@ -20,8 +20,7 @@ namespace {
 
 bc::platform::App g_app;
 
-// Whole decimal numbers only: "12abc", "-1" or a seed above 2^32 - 1 is no
-// level link, rather than some other level than the one shared.
+/** @brief Parse a nonzero unsigned 32-bit seed without accepting signs or suffixes. */
 bool parseSeed(const std::string& text, unsigned int& out) {
     if (text.empty() || text.size() > 10) return false;
     unsigned long long value = 0;
@@ -45,7 +44,7 @@ bool parseSize(const std::string& text, int& out) {
     return true;
 }
 
-// Empty: a link from before difficulties, `rated` false (App::startFromSeed).
+/** @brief Parse difficulty; an empty value preserves legacy unrated generation. */
 bool parseDifficulty(const std::string& text, bc::Difficulty& out, bool& rated) {
     rated = !text.empty();
     out = bc::Difficulty::Medium;
@@ -59,8 +58,7 @@ void frameCallback(void* arg) {
 
 #ifndef __EMSCRIPTEN__
 
-// Offscreen capture used to eyeball the renderer without a display, and handy
-// for anyone wanting a quick look at a level: --shot normal 1 out.png
+/** @brief Capture a native headless frame via --shot MODE LEVEL TICKS OUTPUT. */
 int screenshot(const std::string& assetRoot, bc::Mode mode, int level, int warmupTicks,
                const char* outPath, bool handheld) {
     SDL_SetHint(SDL_HINT_VIDEODRIVER, "dummy");
@@ -72,9 +70,7 @@ int screenshot(const std::string& assetRoot, bc::Mode mode, int level, int warmu
     for (int i = 0; i < warmupTicks; ++i) app.tick();
     app.draw();
 
-    // Read back the renderer's real output, not the logical size: the window
-    // is created at an integer multiple of it, and reading into a buffer sized
-    // for the logical resolution walks off the end.
+    // The output size can exceed the logical viewport; size readback storage for actual pixels.
     int w = 0, h = 0;
     if (SDL_GetRendererOutputSize(app.sdlRenderer(), &w, &h) != 0 || w <= 0 || h <= 0) {
         w = app.gfx().logicalWidth();
@@ -98,28 +94,27 @@ int screenshot(const std::string& assetRoot, bc::Mode mode, int level, int warmu
 }  // namespace
 
 #ifdef __EMSCRIPTEN__
-// Called from web/shell.html as Module._bc_generate_level(seed) etc.
+/** @brief Browser exports consumed by web/shell.html through Module._bc_*. */
 extern "C" {
-// The New level window's Generate: seed 0 picks a random one; size 16, 24 or
-// 32; difficulty 0 easy, 1 medium, 2 hard.
+/** @brief Generate a square map; seed zero is random, difficulty is 0/1/2. */
 EMSCRIPTEN_KEEPALIVE void bc_generate_level(unsigned int seed, int size, int difficulty) {
     if (difficulty < 0 || difficulty > 2) difficulty = 1;
     g_app.generateLevel(seed, size, static_cast<bc::Difficulty>(difficulty));
 }
-// The Back button over the board: where the timer goes, in logical pixels.
+/** @brief Set the timer position in logical board pixels. */
 EMSCRIPTEN_KEEPALIVE void bc_set_timer_at(int x, int y) { g_app.setTimerAt(x, y); }
-// The start page's "Generate level": opens the New level window.
+
 EMSCRIPTEN_KEEPALIVE void bc_ask_to_generate() { g_app.askToGenerate(); }
 EMSCRIPTEN_KEEPALIVE void bc_select_level()   { g_app.openLevelSelect(); }
-// The button under the level list: carrot levels <-> egg levels.
+
 EMSCRIPTEN_KEEPALIVE void bc_toggle_level_mode() { g_app.toggleLevelMode(); }
-// key is an SDL keycode: the lower-case letter's code, or 27 for Escape.
+/** @brief Dispatch an SDL keycode from the browser controls. */
 EMSCRIPTEN_KEEPALIVE void bc_press_key(int key) { g_app.pressKey(key); }
-// The Settings page: volumes in percent, 0..100; muted 0 or 1.
+/** @brief Apply music and sound percentages in [0, 100] and a boolean mute flag. */
 EMSCRIPTEN_KEEPALIVE void bc_set_audio(int music, int sound, int muted) {
     g_app.setAudio(music, sound, muted != 0);
 }
-// 1 while the Settings page is open
+/** @brief Pause the simulation while a browser dialog is open. */
 EMSCRIPTEN_KEEPALIVE void bc_set_paused(int paused) { g_app.setPaused(paused != 0); }
 }
 #endif
@@ -127,14 +122,13 @@ EMSCRIPTEN_KEEPALIVE void bc_set_paused(int paused) { g_app.setPaused(paused != 
 int main(int argc, char** argv) {
     std::string assetRoot = "assets/v1";
     bool handheld = false;
-    // A shared generated level: its seed, map side and difficulty, as text.
+
     std::string startSeed;
     std::string startSize;
     std::string startDifficulty;
 
 #ifdef __EMSCRIPTEN__
     {
-        // shell.html copies ?seed=, ?size= and ?difficulty= here
         emscripten::val module = emscripten::val::global("Module");
         emscripten::val seed = module["__seed"];
         emscripten::val size = module["__size"];
@@ -176,9 +170,7 @@ int main(int argc, char** argv) {
     if (!g_app.init(assetRoot, /*headless=*/false)) return 1;
     if (handheld) g_app.setViewMode(bc::gfx::ViewMode::Handheld);
 
-    // A link to a generated level starts in it. Without a size it is the
-    // classic 16 x 16; without a difficulty, the level the link gave before
-    // there were difficulties.
+    // Omitted size defaults to classic; omitted difficulty preserves legacy generation.
     if (!startSeed.empty()) {
         unsigned int seed = 0;
         int size = 0;
@@ -194,8 +186,7 @@ int main(int argc, char** argv) {
     }
 
 #ifdef __EMSCRIPTEN__
-    // Zero means "drive from requestAnimationFrame", which keeps the canvas in
-    // step with the compositor and pauses in background tabs.
+    // A zero frame rate follows requestAnimationFrame and pauses in background tabs.
     emscripten_set_main_loop_arg(frameCallback, &g_app, 0, 1);
 #else
     while (g_app.running()) frameCallback(&g_app);

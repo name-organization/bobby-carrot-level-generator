@@ -1,4 +1,4 @@
-// TEMPORARY, see hint_overlay.hpp for how to remove it.
+
 #include "hint_overlay.hpp"
 
 #include <algorithm>
@@ -7,7 +7,7 @@
 namespace bc::gfx {
 namespace {
 
-// Thick axis-aligned segment between two cell centres.
+/** @brief Draw an axis-aligned segment between cell centers in camera coordinates. */
 void segment(SDL_Renderer* r, Coord a, Coord b, int half, int camX, int camY) {
     const int ax = a.x * kTileSize + kTileSize / 2 - camX;
     const int ay = a.y * kTileSize + kTileSize / 2 - camY;
@@ -39,7 +39,6 @@ void drawHintOverlay(SDL_Renderer* r, const Game& game, int camX, int camY) {
 
     const Coord from = game.player().cell();
 
-    // whole path: dark outline under a yellow line
     for (int pass = 0; pass < 2; ++pass) {
         if (pass == 0) SDL_SetRenderDrawColor(r, 20, 20, 20, 190);
         else           SDL_SetRenderDrawColor(r, 255, 216, 77, 255);

@@ -10,16 +10,16 @@
 
 namespace bc::gfx {
 
-// Two presentations of the same board: the whole island at once, and a
-// close-up that scrolls behind Bobby. The full view is as big as the board,
-// in pixels: a 32x32 board is 1024 x 1024 logical pixels, which SDL scales
-// into the window. The close-up is kViewCells cells across (and as many rows
-// as keep the board's proportions) in a window of the same size, so it shows
-// fewer cells, each of them bigger.
+/**
+ * @brief Full-board view or a scrolling close-up within the same window.
+ *
+ * @details FullMap uses one logical pixel per art pixel; Handheld shows fewer
+ * cells at a larger scale while preserving the board aspect ratio.
+ */
 enum class ViewMode { FullMap, Handheld };
 
-constexpr int kFullW     = Grid::kClassic * kTileSize;   // 512, a classic board
-constexpr int kFullH     = Grid::kClassic * kTileSize;   // 512
+constexpr int kFullW     = Grid::kClassic * kTileSize;   ///< 512, a classic board
+constexpr int kFullH     = Grid::kClassic * kTileSize;   ///< 512
 constexpr int kViewCells = 10;
 
 class Renderer {
@@ -30,29 +30,24 @@ public:
     ViewMode viewMode() const { return view_; }
     void toggleViewMode() { view_ = view_ == ViewMode::FullMap ? ViewMode::Handheld : ViewMode::FullMap; }
 
-    // Size of the board in cells: the level's while one is shown, the classic
-    // 16x16 on the other screens. The app sets it and then redoes the layout.
+    /** @brief Set board dimensions in cells before updating the application layout. */
     void setBoard(int w, int h) { boardW_ = w; boardH_ = h; }
     int boardW() const { return boardW_; }
     int boardH() const { return boardH_; }
 
-    // The close-up is for playing only: the app allows it while a level is
-    // being played, and the menus, the level list and the web page's windows
-    // over a paused level (Settings, New level) keep the whole view, whatever
-    // the view mode is.
+    /** @brief Allow close-up rendering during play; menus and paused dialogs use FullMap. */
     void setCloseUpAllowed(bool on) { closeUpAllowed_ = on; }
     bool closeUpAllowed() const { return closeUpAllowed_; }
     bool closeUp() const { return view_ == ViewMode::Handheld && closeUpAllowed_; }
 
-    // The whole board, in logical pixels: the size of the window in either view.
+    /** @brief Full-board dimensions in logical pixels, independent of the current view. */
     int fullWidth() const  { return boardW_ * kTileSize; }
     int fullHeight() const { return boardH_ * kTileSize; }
-    // What is drawn, in logical pixels: the whole board, or the close-up.
+    /** @brief Visible viewport dimensions in logical pixels. */
     int logicalWidth() const  { return closeUp() ? closeUpCols() * kTileSize : fullWidth(); }
     int logicalHeight() const { return closeUp() ? closeUpRows() * kTileSize : fullHeight(); }
 
-    // Where the timer is, in logical pixels from the top left corner: the web
-    // page keeps its Back button there and the timer right of it, level with it.
+    /** @brief Position the timer beside the page Back button, in logical pixels. */
     void setTimerAt(int x, int y) {
         timerX_ = std::max(4, x);
         timerY_ = std::max(4, y);
@@ -64,13 +59,17 @@ public:
     void drawGame(const Game& game, int frameTick);
     void drawTitle(int frameTick);
     void drawLevelSelect(Mode mode, int selected, int unlocked);
-    // Level under a point on the level select screen, or -1 if none.
+    /**
+     * @brief Hit-test the level list in logical pixels.
+     *
+     * @return Zero-based level index, or -1 outside the grid.
+     */
     int levelAt(Mode mode, int x, int y) const;
     void drawClearedBanner(int frameTick);
     void drawEndScreen();
     void drawTouchArrows(float alpha);
 
-    // Screen-space rectangle of an on-screen arrow, for hit testing taps.
+    /** @brief Return a touch arrow rectangle in logical viewport pixels. */
     SDL_Rect arrowRect(Dir d) const;
 
     const TextureCache& textures() const { return tex_; }

@@ -7,9 +7,7 @@ namespace {
 constexpr int kDX[4] = {0, 1, 0, -1};
 constexpr int kDY[4] = {-1, 0, 1, 0};
 
-// Hedge piece by its open sides (neighbours that are not hedge). The counts in
-// the comments are how often the originals use that piece for that mask; the
-// rare disagreements are hand-drawn exceptions.
+// Hedge sprite indexed by open-side mask; inferred from the original levels.
 constexpr std::uint8_t kHedge[16] = {
     0,   // -      '#'  4576
     4,   // N      '4'   579  top edge of the hedge below an open cell
@@ -29,7 +27,7 @@ constexpr std::uint8_t kHedge[16] = {
     9,   // NESW   '9'    16  lone bush
 };
 
-// Fence piece by its fence neighbours.
+// Fence sprite indexed by neighbouring-fence mask.
 constexpr std::uint8_t kFence[16] = {
     13,  // -      '"'     8
     13,  // N      '"'    78

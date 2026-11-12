@@ -15,10 +15,7 @@ void fail(std::string* error, const std::string& message) {
     if (error) *error = message;
 }
 
-// Only CR goes: trailing spaces are ground, so they carry meaning now. They are
-// still allowed to go missing -- a short row is padded out below -- because
-// plenty of editors strip trailing whitespace on save and a row of path would
-// otherwise come back truncated.
+// Spaces encode path; strip only CR to preserve map geometry.
 std::string_view trimCarriageReturn(std::string_view line) {
     while (!line.empty() && line.back() == '\r') line.remove_suffix(1);
     return line;
@@ -51,34 +48,19 @@ bool Level::loadFromText(std::string_view text, std::string* error) {
     int lineNo = 0;
     std::string title;
 
-    // Split first. A file that ends with a newline must not yield a phantom
-    // empty line after the last row: now that a blank line means a row of
-    // path, that phantom would pad a 15-row file out to a valid-looking 16 and
-    // hide the missing row.
-    std::vector<std::string_view> lines;
-    for (std::size_t pos = 0; pos <= text.size();) {
-        const std::size_t eol = text.find('\n', pos);
-        if (eol == std::string_view::npos) {
-            if (pos < text.size()) lines.push_back(text.substr(pos));
-            break;
-        }
-        lines.push_back(text.substr(pos, eol - pos));
-        pos = eol + 1;
-    }
-
-    // Every line but a comment is a row, blank ones included: with path
-    // written as a space, a row of open ground looks exactly like an empty
-    // line, so skipping blanks would quietly delete it. The level is as high
-    // as there are rows and as wide as the longest one.
     struct Row {
         std::string_view text;
         int lineNo;
     };
     std::vector<Row> rows;
     int width = 0;
-    for (std::string_view raw : lines) {
+    // A terminal newline adds no row; an explicit blank line is a row of path.
+    for (std::size_t pos = 0; pos < text.size();) {
+        const std::size_t eol = text.find('\n', pos);
+        const std::size_t end = eol == std::string_view::npos ? text.size() : eol;
+        std::string_view line = trimCarriageReturn(text.substr(pos, end - pos));
+        pos = eol == std::string_view::npos ? text.size() : eol + 1;
         ++lineNo;
-        std::string_view line = trimCarriageReturn(raw);
 
         if (!line.empty() && line.front() == kCommentChar) {
             if (title.empty()) {
@@ -118,7 +100,6 @@ bool Level::loadFromText(std::string_view text, std::string* error) {
     parsed.h = static_cast<int>(rows.size());
 
     for (const Row& r : rows) {
-        // A short row is the rest of it being path.
         for (int x = static_cast<int>(r.text.size()); x < width; ++x) parsed.at(x, row) = T_GROUND;
 
         for (int x = 0; x < static_cast<int>(r.text.size()); ++x) {

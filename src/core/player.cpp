@@ -51,18 +51,10 @@ bool Player::tryStartStep(Grid& g, const Progress& p, Dir d) {
     stepTick_  = 0;
     dyingStep_ = (g.at(to) == T_HOLE);
     idleTicks_ = 0;
-    // Keep the walk cycle running across consecutive cells instead of
-    // restarting it on every tile boundary.
+    // Preserve the walk animation across consecutive cells.
     if (state_ != State::Walk) enterState(State::Walk);
     return true;
 }
-
-namespace {
-bool everythingCollected(const Progress& p, const Level& lv) {
-    return lv.carrotTotal > 0 ? p.carrotCount == lv.carrotTotal
-                              : p.eggCount == lv.eggTotal;
-}
-}  // namespace
 
 unsigned Player::arrive(Grid& g, Progress& p, const Level& lv) {
     const Coord from = cell_;
@@ -70,11 +62,10 @@ unsigned Player::arrive(Grid& g, Progress& p, const Level& lv) {
     moving_ = false;
     stepTick_ = 0;
 
-    // Order matters: leaving the final patch of grass is what completes the
-    // level, and the exit must already see that count.
+    // Leaving the final grass patch must update progress before entering the exit.
     unsigned events = rules::onLeave(g, from, p);
 
-    const EnterResult r = rules::onEnter(g, cell_, p, everythingCollected(p, lv));
+    const EnterResult r = rules::onEnter(g, cell_, p, p.allCollected(lv));
     events |= r.events;
 
     if (r.reachedExit) {
@@ -113,7 +104,6 @@ unsigned Player::update(Grid& g, Progress& p, const Level& lv, Dir held, Dir buf
             break;
     }
 
-    // --- decide where to go -------------------------------------------------
     if (!moving_) {
         Dir want = Dir::None;
         if (forced_ != Dir::None) {
@@ -129,7 +119,6 @@ unsigned Player::update(Grid& g, Progress& p, const Level& lv, Dir held, Dir buf
         if (want != Dir::None) {
             idleTicks_ = 0;
             if (!tryStartStep(g, p, want)) {
-                // Bobby still turns to face the obstacle, as in the original.
                 events |= ev::Blocked;
                 if (state_ != State::Walk) enterState(State::Walk);
             }
@@ -141,12 +130,10 @@ unsigned Player::update(Grid& g, Progress& p, const Level& lv, Dir held, Dir buf
         }
     }
 
-    // --- advance the step ---------------------------------------------------
     if (moving_) {
         ++stepTick_;
 
-        // The original starts the death animation once Bobby is halfway into
-        // the hole rather than when he reaches the far cell.
+        // Match the original death animation: freeze halfway into a hole.
         if (dyingStep_ && stepTick_ >= kTicksPerStep / 2) {
             deathFX_ = cell_.x + (target_.x - cell_.x) * 0.5f;
             deathFY_ = cell_.y + (target_.y - cell_.y) * 0.5f;

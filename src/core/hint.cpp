@@ -14,7 +14,7 @@ namespace {
 
 constexpr int kCells = Grid::kCells;
 
-// The static part of the puzzle, read off the live grid.
+/** @brief Static puzzle cells read from the current grid. */
 struct Model {
     std::array<bool, kCells> walk{};
     std::array<bool, kCells> carrot{};
@@ -22,8 +22,7 @@ struct Model {
     int exit = -1;
     int carrots = 0;
 
-    // Neighbours in a fixed order (up, down, left, right) so that ties between
-    // equally short paths always break the same way.
+    /** @brief Enumerate neighbours in fixed U/D/L/R order for deterministic path ties. */
     int neighbours(int c, std::array<int, 4>& out) const {
         const int x = c % Grid::kStride, y = c / Grid::kStride;
         const int nx[4] = {x, x, x - 1, x + 1};
@@ -38,8 +37,7 @@ struct Model {
     }
 };
 
-// What changes while Bobby walks: where he is, which carrots are gone and
-// which spikes have fired.
+/** @brief Player position, collected carrots and collapsed spikes during path replay. */
 struct State {
     int pos = 0;
     std::bitset<kCells> got;
@@ -75,7 +73,7 @@ bool adjacent(int a, int b) {
     return (dx == 0 && (dy == 1 || dy == -1)) || (dy == 0 && (dx == 1 || dx == -1));
 }
 
-// One move by the rules; false (state untouched) when the move is illegal.
+/** @brief Apply one move; return false without changing state for illegal moves. */
 bool step(const Model& m, State& s, int to) {
     if (to < 0 || to >= kCells || !m.walk[to] || s.dead[to] || !adjacent(s.pos, to))
         return false;
@@ -88,9 +86,11 @@ bool step(const Model& m, State& s, int to) {
     return true;
 }
 
-// `path` cut at the first winning state, or nothing if it is illegal or never
-// wins. Every path a hint returns goes through this, so a hint is always a
-// legal winning play.
+/**
+ * @brief Validate a candidate path and trim it to the first winning state.
+ *
+ * @return Winning prefix, or nullopt for an illegal or non-winning path.
+ */
 std::optional<std::vector<int>> trimToWin(const Model& m, State s,
                                           const std::vector<int>& path) {
     if (isWon(m, s)) return std::vector<int>{};
@@ -101,7 +101,7 @@ std::optional<std::vector<int>> trimToWin(const Model& m, State s,
     return std::nullopt;
 }
 
-// BFS distances from `src`, -1 where unreachable.
+/** @brief Compute BFS distances; unreachable cells retain -1. */
 std::array<int, kCells> distances(const Model& m, int src) {
     std::array<int, kCells> dist;
     dist.fill(-1);
@@ -122,9 +122,12 @@ std::array<int, kCells> distances(const Model& m, int src) {
     return dist;
 }
 
-// Stage 2. Walk back to the reference path without stepping off a spike on
-// the way, then follow what is left of the reference. Live spikes may be the
-// last cell of the walk but are never walked through.
+/**
+ * @brief Rejoin the reference without crossing a live spike on the approach.
+ *
+ * @details A live spike may be the final approach cell, but cannot be crossed.
+ * Validate the entire joined path before returning it.
+ */
 std::optional<std::vector<int>> backToReference(const Model& m, const State& s,
                                                 const std::vector<int>& reference) {
     std::array<int, kCells> parent;
@@ -159,17 +162,13 @@ std::optional<std::vector<int>> backToReference(const Model& m, const State& s,
     return best;
 }
 
-// Stage 3. Only spikes change the map for good; everywhere else Bobby can walk
-// back and forth freely. So the map is collapsed into a small graph:
-//
-//   region  a connected patch of cells without spikes; may be visited any
-//           number of times, and one visit is enough to pick all its carrots
-//   spike   one live spike cell; may be visited at most once
-//
-// The level is winnable exactly when this graph has a walk from Bobby's node
-// to the exit's region that visits every region holding a carrot and no spike
-// twice. Such a walk alternates regions and runs of spikes, so it has at most
-// 2 * spikes + 1 nodes: one SAT call with that horizon settles the question.
+/**
+ * @brief Collapse safe connected cells into reusable regions and spikes into single-use nodes.
+ *
+ * @details A winning abstract walk visits every carrot region and reaches the exit
+ * without repeating a spike. It has at most 2 * spikes + 1 nodes, giving a complete
+ * SAT horizon. Expansion collects every carrot in each visited region.
+ */
 struct Abstraction {
     const Model& m;
     std::array<int, kCells> nodeOf{};          // cell -> node, -1 for walls
@@ -222,7 +221,7 @@ struct Abstraction {
     int nodeCount() const { return regions + static_cast<int>(spikeCell.size()); }
     bool isSpike(int node) const { return node >= regions; }
 
-    // The walk over nodes, without repeats of the same node in a row.
+    /** @brief Solve for an abstract walk, suppressing consecutive repeats in the result. */
     sat::Status solve(int startNode, long long& budget, std::vector<int>& walk) const {
         using sat::neg;
         using sat::pos;
@@ -242,14 +241,13 @@ struct Abstraction {
         sat::Solver s;
         for (int i = 0; i < (horizon + 1) * frame; ++i) s.newVar();
 
-        // start: Bobby's node, no spike used yet, only his own region seen
         s.addClause(pos(at(0, startNode)));
         for (int k = 0; k < spikes; ++k) s.addClause(neg(used(0, k)));
         for (int j = 0; j < needed; ++j)
             s.addClause(carrotRegions[j] == startNode ? pos(seen(0, j)) : neg(seen(0, j)));
 
         for (int t = 0; t <= horizon; ++t) {
-            // exactly one node: at least one, and each pins a binary counter
+            // Each selected node fixes a binary ID, enforcing at most one node per frame.
             std::vector<sat::Lit> any;
             for (int n = 0; n < nodes; ++n) {
                 any.push_back(pos(at(t, n)));
@@ -260,7 +258,7 @@ struct Abstraction {
             if (t == horizon) break;
 
             for (int n = 0; n < nodes; ++n) {
-                // move to a neighbouring node; a region may also be kept
+                // Regions may wait; spikes must be left and cannot be visited twice.
                 std::vector<sat::Lit> next{neg(at(t, n))};
                 for (int to : adj[n]) next.push_back(pos(at(t + 1, to)));
                 if (!isSpike(n)) next.push_back(pos(at(t + 1, n)));
@@ -268,7 +266,7 @@ struct Abstraction {
             }
             for (int k = 0; k < spikes; ++k) {
                 const int n = regions + k;
-                // a spike is used up by standing on it, and cannot be entered again
+                // used(t + 1) <=> used(t) OR at(t, spike); forbid entry to a used spike.
                 s.addClause(neg(at(t + 1, n)), neg(used(t, k)));
                 s.addClause(neg(used(t, k)), pos(used(t + 1, k)));
                 s.addClause(neg(at(t, n)), pos(used(t + 1, k)));
@@ -276,13 +274,13 @@ struct Abstraction {
             }
             for (int j = 0; j < needed; ++j) {
                 const int n = carrotRegions[j];
-                // a carrot region counts as seen once Bobby has been in it
+                // seen(t + 1) <=> seen(t) OR at(t + 1, carrot region).
                 s.addClause(neg(seen(t, j)), pos(seen(t + 1, j)));
                 s.addClause(neg(at(t + 1, n)), pos(seen(t + 1, j)));
                 s.addClause(neg(seen(t + 1, j)), pos(seen(t, j)), pos(at(t + 1, n)));
             }
         }
-        // goal: in the exit's region with every carrot region seen
+
         s.addClause(pos(at(horizon, nodeOf[m.exit])));
         for (int j = 0; j < needed; ++j) s.addClause(pos(seen(horizon, j)));
 
@@ -299,9 +297,12 @@ struct Abstraction {
         return status;
     }
 
-    // Shortest walk from `from` through cells of `region` to the nearest cell
-    // accepted by `goal`, appended to `path`. `from` may lie outside the region
-    // (a spike next to it). Returns the cell reached, or -1.
+    /**
+     * @brief Append a shortest path through a region to the nearest accepted goal.
+     *
+     * @param from Start cell, possibly a spike adjacent to the region.
+     * @return Reached cell, or -1 when no goal is reachable.
+     */
     template <class Goal>
     int walkTo(int from, int region, Goal goal, std::vector<int>& path) const {
         if (nodeOf[from] == region && goal(from)) return from;
@@ -331,8 +332,7 @@ struct Abstraction {
         return -1;
     }
 
-    // Turns a node walk into concrete cells: every carrot of a region is picked
-    // up on the way through it, nearest first.
+    /** @brief Expand an abstract walk into cells, collecting region carrots nearest-first. */
     bool expand(int startCell, const std::vector<int>& walk, std::vector<int>& path) const {
         path.clear();
         int cur = startCell;
@@ -419,14 +419,12 @@ Result compute(const Grid& grid, Coord pos, const std::vector<Coord>& reference,
 
     if (isWon(m, state)) return {Verdict::Winnable, Stage::Won, {}};
 
-    // 1. flood fill
     const auto fromPos = distances(m, state.pos);
     bool reachable = fromPos[m.exit] != -1;
     for (int i = 0; i < kCells && reachable; ++i)
         if (m.carrot[i] && fromPos[i] == -1) reachable = false;
     if (!reachable) return {Verdict::DeadEnd, Stage::Flood, {}};
 
-    // 2. back to the reference path
     std::vector<int> refCells;
     for (Coord c : reference)
         refCells.push_back(grid.inBounds(c.x, c.y) ? c.index() : -1);
@@ -434,7 +432,6 @@ Result compute(const Grid& grid, Coord pos, const std::vector<Coord>& reference,
         return winnable(Stage::Reference, state.pos, *path);
     if (!options.useSolver) return {Verdict::Unknown, Stage::Reference, {}};
 
-    // 3. solver, on the map collapsed to regions and spikes
     const Abstraction abstraction(m);
     long long budget = options.conflictBudget;
     std::vector<int> walk, path;

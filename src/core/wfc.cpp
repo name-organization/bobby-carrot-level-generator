@@ -1,6 +1,7 @@
 #include "wfc.hpp"
 
 #include <algorithm>
+#include <bit>
 #include <map>
 #include <numeric>
 #include <utility>
@@ -35,7 +36,6 @@ struct Symbols {
     Symbol at(int x, int y) const { return s[static_cast<std::size_t>(y * w + x)]; }
 };
 
-// A quarter turn clockwise.
 Symbols rotate(const Symbols& g) {
     Symbols r{g.h, g.w, std::vector<Symbol>(g.s.size())};
     for (int y = 0; y < r.h; ++y)
@@ -48,12 +48,6 @@ Symbols mirror(const Symbols& g) {
     for (int y = 0; y < r.h; ++y)
         for (int x = 0; x < r.w; ++x) r.s[static_cast<std::size_t>(y * r.w + x)] = g.at(g.w - 1 - x, y);
     return r;
-}
-
-int bits(Mask m) {
-    int n = 0;
-    for (; m; m &= static_cast<Mask>(m - 1)) ++n;
-    return n;
 }
 
 class Solver {
@@ -90,7 +84,7 @@ private:
         return true;
     }
 
-    // Calls fn(window, offset of the cell inside it) for every window covering `cell`.
+    /** @brief Visit each covering window with the cell offset inside that window. */
     template <class F>
     void forWindowsOf(int cell, F&& fn) const {
         const int cx = cell % w_, cy = cell / w_;
@@ -135,11 +129,10 @@ private:
     }
 
     bool search(const State& s, std::vector<Mask>& out) {
-        // the undecided cell with the fewest symbols left, ties broken at random
         int fewest = kSymbols + 1;
         std::vector<int> ties;
         for (int i = 0; i < w_ * h_; ++i) {
-            const int n = bits(s.cells[static_cast<std::size_t>(i)]);
+            const int n = std::popcount(s.cells[static_cast<std::size_t>(i)]);
             if (n <= 1) continue;
             if (n < fewest) {
                 fewest = n;
@@ -153,12 +146,8 @@ private:
         }
         const int cell = ties[static_cast<std::size_t>(rng_.range(0, static_cast<int>(ties.size()) - 1))];
 
-        // Each symbol weighs as often as the patterns still possible in the
-        // window centred on the cell have it in the centre. Summing over every
-        // window covering the cell instead would favour hedge: "hedge next to
-        // the path" is the most common thing in the originals -- it is the
-        // whole shore of the island. A cell on the edge of the region has no
-        // window around it and falls back to that sum.
+        // Prefer centered-window frequencies; summing every covering window overweights shore hedge.
+        // Boundary cells have no centered window and use all covering windows instead.
         std::uint64_t weight[kSymbols] = {};
         const int cx = cell % w_, cy = cell / w_;
         const bool centred = cx >= 1 && cx < w_ - 1 && cy >= 1 && cy < h_ - 1;
@@ -174,8 +163,7 @@ private:
                         model_.counts[static_cast<std::size_t>(p)];
             });
         }
-        // On the edge this is what turns a one-cell wall between two rooms
-        // into a fence rather than a thin hedge, as in the originals.
+
         for (int v = 0; v < kSymbols; ++v)
             weight[v] = weight[v] *
                         static_cast<std::uint64_t>(std::max(0, percent_[static_cast<std::size_t>(v)])) / 100;
@@ -196,7 +184,7 @@ private:
                 }
             }
             if (pick < 0) {
-                // nothing weighs anything: any symbol but hedge, hedge last
+                // Zero-weight fallback tries non-hedge symbols before hedge.
                 std::vector<int> options;
                 for (int v = 0; v < kSymbols; ++v)
                     if (v != Hedge && (left & bit(static_cast<Symbol>(v)))) options.push_back(v);

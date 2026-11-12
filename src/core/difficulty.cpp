@@ -7,10 +7,11 @@
 namespace bc::difficulty {
 namespace {
 
-// Where a measure starts counting (easy) and where it is all in (hard), in the
-// units of Rating. Per map size, from the medium levels of that size: about
-// their mean minus and plus a spread, so that a typical medium level scores
-// near 50 on every size (measured over 100 medium levels per size).
+/**
+ * @brief Size-dependent easy/hard anchors in Rating units.
+ *
+ * @details Calibrated from Medium levels to center typical scores near 50.
+ */
 struct Anchor {
     int easy, hard;
 };
@@ -39,13 +40,13 @@ int isqrt(long long v) {
     return static_cast<int>(r);
 }
 
-// The same size classes as roomgen::Params::forSize.
+// Keep size classes aligned with roomgen::Params::forSize().
 const Anchors& anchorsFor(int width, int height) {
     const int side = std::max(width, height);
     return side <= 18 ? kSmall : (side <= 26 ? kMiddle : kLarge);
 }
 
-// 0..1000 between the anchors.
+/** @brief Scale a measure to [0, 1000] between its anchors. */
 int scale(int value, Anchor a) {
     if (a.hard == a.easy) return 0;
     const long long v = 1000LL * (value - a.easy) / (a.hard - a.easy);
@@ -108,7 +109,7 @@ int naiveLeft(const Level& level, Rng& rng) {
     for (int step = 0; step < 4 * g.w * g.h; ++step) {
         if (carrots == 0 && pos == level.exit) return 0;
         rng.shuffle(dirs);
-        // breadth-first from Bobby: the first step towards each cell
+
         std::fill(dist.begin(), dist.end(), -1);
         queue.assign(1, pos);
         dist[pos.index()] = 0;
@@ -178,14 +179,14 @@ Rating rate(const Level& level, const std::vector<Dir>& moves, std::uint32_t see
                           static_cast<long long>(scale(r.spikes, a.spikes)) * kSpikesWeight +
                           static_cast<long long>(scale(isqrt(1000LL * r.naive), a.naive)) * kNaiveWeight;
     const int weights = kCoverWeight + kSpikesWeight + kNaiveWeight;
-    // 0..1000 per measure, so the mean over 10 is 0..100, rounded to nearest
+    // Convert the weighted mean from [0, 1000] to [0, 100], rounding to nearest.
     r.score = static_cast<int>((sum + 5LL * weights) / (10LL * weights));
     return r;
 }
 
 std::uint32_t trySeed(std::uint32_t seed, int k) {
     if (k == 0) return seed;
-    // a different, well-mixed seed per try; never 0, which means "random"
+    // Keep derived seeds nonzero: zero requests random generation in Game.
     std::uint32_t s = seed + 0x9E3779B9u * static_cast<std::uint32_t>(k);
     s ^= s >> 16;
     s *= 0x85EBCA6Bu;

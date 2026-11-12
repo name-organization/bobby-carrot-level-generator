@@ -6,9 +6,8 @@
 
 namespace bc {
 
-// Indexed by tile id. Keep in sync with the table in README.md.
+/** @brief Tile characters indexed by ID; keep the README format table in sync. */
 inline constexpr char kTileChars[48] = {
-    // 0-11 -- hedge: impassable greenery framing the island.
     '#',  // 0  solid hedge
     '1',  // 1  edge
     '2',  // 2  edge
@@ -22,7 +21,6 @@ inline constexpr char kTileChars[48] = {
     '(',  // 10 corner, rare
     ')',  // 11 corner, rare
 
-    // 12-17 -- wooden fences, also impassable.
     '=',  // 12 fence, horizontal
     '"',  // 13 fence, vertical
     '{',  // 14 fence, horizontal with post
@@ -30,7 +28,6 @@ inline constexpr char kTileChars[48] = {
     '[',  // 16 fence, junction
     ']',  // 17 fence, end
 
-    // 18-46 -- everything the rules care about.
     ' ',  // 18 path
     '*',  // 19 carrot
     'o',  // 20 carrot already taken (runtime only, never in a file)
@@ -84,7 +81,11 @@ inline constexpr TileAlias kTileAliases[] = {
 constexpr int kTileAliasCount =
     static_cast<int>(sizeof(kTileAliases) / sizeof(kTileAliases[0]));
 
-// Returns -1 for a character that is not in either table.
+/**
+ * @brief Decode a tile character or one of its accepted aliases.
+ *
+ * @return Tile ID, or -1 for an unknown character.
+ */
 constexpr int charToTile(char c) {
     for (int i = 0; i < kTileCount; ++i) {
         if (kTileChars[i] == c) return i;
@@ -95,8 +96,7 @@ constexpr int charToTile(char c) {
     return -1;
 }
 
-// A duplicate character would make two different tiles indistinguishable on
-// reload, silently corrupting levels. Catch it at compile time instead.
+/** @brief Check that canonical tile characters and aliases do not overlap. */
 constexpr bool tileCharsAreUnique() {
     for (int i = 0; i < kTileCount; ++i) {
         for (int j = i + 1; j < kTileCount; ++j) {
@@ -110,8 +110,6 @@ constexpr bool tileCharsAreUnique() {
 }
 static_assert(tileCharsAreUnique(), "two tiles share a character");
 
-// The comment marker must not collide with a tile, or a map row could not start
-// with that tile.
 constexpr char kCommentChar = ';';
 static_assert(charToTile(kCommentChar) == -1, "the comment marker is also a tile");
 

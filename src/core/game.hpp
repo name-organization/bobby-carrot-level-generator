@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "difficulty.hpp"
@@ -12,56 +13,59 @@
 
 namespace bc {
 
-// One level session: the mutable grid, Bobby, the collected totals and the
-// clock. Knows nothing about rendering, audio or the platform.
+/** @brief Level simulation, progress and hints, independent of SDL and the platform. */
 class Game {
 public:
     explicit Game(std::string assetRoot = "assets/v1") : root_(std::move(assetRoot)) {}
 
     bool load(Mode mode, int index);
-    // A new room-based level (roomgen.hpp) of the given size, up to
-    // Grid::kMaxW x Grid::kMaxH, and difficulty; seed 0 picks a random one.
-    // The same seed, size and difficulty always give the same level, which is
-    // how levels are shared. `rated` false takes the first level Medium makes,
-    // without the difficulty score: what links from before difficulties name.
+    /**
+     * @brief Generate and load a room-based level.
+     *
+     * @param seed Reproducible seed; zero chooses a random nonzero seed.
+     * @param width Requested map width, up to Grid::kMaxW.
+     * @param height Requested map height, up to Grid::kMaxH.
+     * @param difficulty Requested difficulty band.
+     * @param rated False selects the first Medium candidate for legacy seed links.
+     * @return True after loading a verified level; false leaves the current session unchanged.
+     */
     bool loadProcedural(unsigned int seed = 0, int width = Grid::kClassic,
                         int height = Grid::kClassic, Difficulty difficulty = Difficulty::Medium,
                         bool rated = true);
-    // Plays a level that is not one of the shipped files: a generated or an
-    // imported one. `reference` is a winning solution as moves from the start,
-    // if known. Always succeeds.
+    /**
+     * @brief Load a generated or imported level.
+     *
+     * @param level Level with metadata already computed by rescan().
+     * @param reference Optional winning moves from the start.
+     * @return True after loading.
+     */
     bool loadLevel(const Level& level, const std::vector<Dir>& reference = {});
     void restart();
 
-    // Queue input for the next tick. `held` is a continuously pressed
-    // direction, `tap` a discrete press that is remembered until Bobby is
-    // free to act on it.
+    /** @brief Set input for the next tick; a tap remains queued until consumed. */
     void setHeld(Dir d) { held_ = d; }
     void queueTap(Dir d) { tap_ = d; }
 
     void update();
 
-    // --- queries ------------------------------------------------------------
     const Grid& grid() const        { return grid_; }
     const Player& player() const    { return player_; }
     const Level& level() const      { return level_; }
     Mode mode() const               { return mode_; }
     int levelIndex() const          { return index_; }
-    // Seed and requested size of the generated level being played; seed 0
-    // when the level was not generated. The size is the one asked for, which
-    // the level itself can differ from when the generator fell back.
+    /**
+     * @brief Generated seed and requested dimensions; seed zero identifies shipped/imported levels.
+     */
     unsigned int seed() const       { return seed_; }
     int generatedWidth() const      { return genWidth_; }
     int generatedHeight() const     { return genHeight_; }
-    // Difficulty asked for, whether the level was picked by its score (false
-    // for links from before difficulties), and the score it got.
+    /** @brief Requested difficulty, selection mode and measured rating. */
     Difficulty generatedDifficulty() const { return genDifficulty_; }
     bool generatedRated() const     { return genRated_; }
     const difficulty::Rating& generatedRating() const { return genRating_; }
     const Progress& progress() const{ return progress_; }
 
-    // True once every carrot (or every patch of grass) has been taken, which
-    // is what opens the exit.
+    /** @brief Check whether every collectible required to open the exit is taken. */
     bool allCollected() const;
     int remaining() const;
     bool usesCarrots() const        { return level_.carrotTotal > 0; }
@@ -73,41 +77,32 @@ public:
     int elapsedSeconds() const      { return elapsedTicks_ / kTicksPerSecond; }
     int moveCount() const           { return moveCount_; }
 
-    // Events raised during the last tick, as ev:: bit flags.
+    /** @brief Events from the last simulation tick, as ev:: flags. */
     unsigned lastEvents() const     { return lastEvents_; }
 
-    // --- hint ---------------------------------------------------------------
-    // Reference solution of the loaded level, as moves from the start. The
-    // level generator will ship one with every level; without it the first
-    // hint finds a path with the solver and keeps it as the reference.
+    /** @brief Remember winning moves from the start, including across restarts. */
     void setReference(const std::vector<Dir>& moves);
 
-    // Asks for a hint. Answered on the next tick at which Bobby stands still,
-    // so the grid is never read halfway through a step.
+    /** @brief Request a hint at the next stationary tick. */
     void requestHint() { hintRequested_ = true; }
 
-    // The H key: shows a hint, or hides the one on screen (a pending request
-    // counts as shown). Hiding keeps the remembered route, so the next hint
-    // is still cheap.
+    /** @brief Toggle a shown or pending hint while retaining the reference route. */
     void toggleHint();
     void hideHint();
 
-    // The last answer, or nullptr if there is none for the current position.
-    // Moving along the suggested path shortens it. Moving off it re-routes
-    // back to the remembered path without the solver; if that route is
-    // broken (a spike it needed has fired, say), the solver is asked with a
-    // small budget, and only if that runs out does the hint disappear until
-    // the next requestHint(). A carrot taken off the path rebuilds the route
-    // so it does not come back to taken carrots where it can avoid them; in a
-    // block of carrots, once the block is collected or Bobby leaves it.
-    // Its `moves` always start at Bobby's current cell, in step with hintPath().
+    /**
+     * @brief Return the visible hint, or nullptr when hidden.
+     *
+     * @details Moves start at the current cell. Following the route shortens it;
+     * deviating first tries to rejoin the reference, then uses a bounded SAT search.
+     * Taking carrots off-route rebuilds the route after their block is finished
+     * or left. A timed-out reroute hides the hint until the next request.
+     */
     const hint::Result* hint() const { return hintShown_ ? &hint_ : nullptr; }
-    // Cells still ahead on the suggested path, the next one first.
+    /** @brief Cells ahead on the visible hint route, next step first. */
     const std::vector<Coord>& hintPath() const { return hintPath_; }
 
 private:
-    // SAT conflicts the solver may spend re-routing after a step off the hint
-    // path, against 400000 for a hint asked with H.
     static constexpr long long kRerouteConflicts = 50000;
 
     void rememberSeed(unsigned int seed, int width, int height,
@@ -117,8 +112,11 @@ private:
     void findCarrotBlocks();
     bool blockDone(int block) const;
     void followHint();
-    // Learned from the original carrot levels on first use; nullptr if they
-    // cannot be read, and the generator then uses its fixed patterns.
+    /**
+     * @brief Lazily learn WFC patterns from original levels.
+     *
+     * @return Model, or nullptr when no samples are available.
+     */
     const wfc::Model* wfcModel();
 
     std::string root_;
@@ -143,14 +141,14 @@ private:
     Dir tap_  = Dir::None;
     bool wasMoving_ = false;
 
-    std::vector<Coord> levelReference_;   // from the level start, may be empty
-    std::vector<Coord> reference_;        // what the next hint builds on
+    std::vector<Coord> levelReference_;   ///< from the level start, may be empty
+    std::vector<Coord> reference_;        ///< what the next hint builds on
     hint::Result hint_;
     std::vector<Coord> hintPath_;
-    Coord hintCell_{};                    // where Bobby was when hintPath_ was valid
+    Coord hintCell_{};                    ///< where Bobby was when hintPath_ was valid
     bool hintShown_ = false;
-    std::vector<int> carrotBlock_;        // cell -> carrot block, -1 if none
-    int pendingBlock_ = -1;               // block whose carrots wait for a re-route
+    std::vector<int> carrotBlock_;        ///< cell -> carrot block, -1 if none
+    int pendingBlock_ = -1;               ///< block whose carrots wait for a re-route
     bool hintRequested_ = false;
 };
 

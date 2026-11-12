@@ -1,8 +1,10 @@
-// Seeded random numbers for the level generator.
-//
-// Own helpers instead of std::uniform_int_distribution and friends: the
-// standard leaves their algorithms to the library, and a seed has to give the
-// same level natively and in the browser. Integers only, for the same reason.
+/**
+ * @file
+ * @brief Deterministic random helpers for reproducible native and browser levels.
+ *
+ * @details Standard distributions and shuffle may differ between C++ libraries.
+ * Preserve draw order when refactoring seeded generation.
+ */
 #pragma once
 
 #include <cstdint>
@@ -19,7 +21,7 @@ public:
     std::uint32_t next() { return static_cast<std::uint32_t>(gen_()); }
     std::uint64_t next64() { return (std::uint64_t{next()} << 32) | next(); }
 
-    // Inclusive on both ends.
+    /** @brief Draw an integer from the inclusive interval [lo, hi]. */
     int range(int lo, int hi) {
         if (hi <= lo) return lo;
         return lo + static_cast<int>(next() % static_cast<std::uint32_t>(hi - lo + 1));

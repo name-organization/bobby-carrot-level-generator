@@ -1,7 +1,7 @@
-// Thin wrapper around the CaDiCaL SAT solver (src/third_party/cadical).
-//
-// The hint code talks to this interface only, so the solver behind it can be
-// swapped without touching hint.cpp.
+/**
+ * @file
+ * @brief CaDiCaL adapter isolating the hint implementation from solver-specific APIs.
+ */
 #pragma once
 
 #include <memory>
@@ -13,7 +13,7 @@ class Solver;
 
 namespace bc::sat {
 
-// A literal is `2 * var` for the variable and `2 * var + 1` for its negation.
+/** @brief Zero-based encoding: 2 * variable is positive, 2 * variable + 1 is negative. */
 using Lit = int;
 
 constexpr Lit pos(int var) { return var * 2; }
@@ -36,16 +36,23 @@ public:
     void addClause(Lit a, Lit b)        { addClause(std::vector<Lit>{a, b}); }
     void addClause(Lit a, Lit b, Lit c) { addClause(std::vector<Lit>{a, b, c}); }
 
-    // Searches until an answer is found or `conflictBudget` conflicts have been
-    // spent. On Unknown the budget is used up (set to zero).
+    /**
+     * @brief Solve with a caller-owned conflict budget.
+     *
+     * @param[in,out] conflictBudget Remaining conflicts; set to zero on Unknown.
+     * @return Sat, Unsat or Unknown when the budget is exhausted.
+     */
     Status solve(long long& conflictBudget);
 
-    // Value of a variable in the model found by the last Sat answer.
+    /**
+     * @brief Read a variable from the last satisfiable model.
+     *
+     * @pre The last solve() returned Status::Sat.
+     */
     bool value(int var) const;
 
 private:
-    // Declares variables created since the last call, so CaDiCaL never
-    // hands one of ours out to its own preprocessing.
+    /** @brief Reserve new variables before CaDiCaL preprocessing can reuse their IDs. */
     void declare();
 
     std::unique_ptr<CaDiCaL::Solver> solver_;
